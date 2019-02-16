@@ -24,40 +24,42 @@ def isPriorTo2_13(version: String): Boolean =
     case _                => false
   }
 
-inThisBuild(
-  Seq(
-    crossScalaVersions := Seq("2.12.8", "2.11.12", "2.13.0-M5"),
-    scalaVersion := crossScalaVersions.value.head,
-    scalacOptions ++= Seq("-feature", "-deprecation", "-unchecked", "-Xfatal-warnings"),
-    scalacOptions ++= {
-      if (isPriorTo2_13(scalaVersion.value)) {
-        Nil
-      } else {
-        Seq("-Ymacro-annotations")
-      }
-    },
-    libraryDependencies ++=
-      Seq("org.scala-lang" % "scala-reflect" % scalaVersion.value, "org.specs2" %% "specs2-core" % "4.4.1" % Test),
-    libraryDependencies ++= {
-      if (isPriorTo2_13(scalaVersion.value)) {
-        Seq(compilerPlugin("org.scalamacros" % "paradise" % "2.1.1" cross CrossVersion.full))
-      } else {
-        Nil
-      }
-    },
-  ))
+lazy val commonSettings = Seq(
+  crossScalaVersions := Seq("2.12.8", "2.11.12", "2.13.0-M5"),
+  scalaVersion := crossScalaVersions.value.head,
+  scalacOptions ++= Seq("-feature", "-deprecation", "-unchecked", "-Xfatal-warnings"),
+  scalacOptions ++= {
+    if (isPriorTo2_13(scalaVersion.value)) {
+      Nil
+    } else {
+      Seq("-Ymacro-annotations")
+    }
+  },
+  libraryDependencies ++=
+    Seq("org.scala-lang" % "scala-reflect" % scalaVersion.value, "org.specs2" %% "specs2-core" % "4.4.1" % Test),
+  libraryDependencies ++= {
+    if (isPriorTo2_13(scalaVersion.value)) {
+      Seq(compilerPlugin("org.scalamacros" % "paradise" % "2.1.1" cross CrossVersion.full))
+    } else {
+      Nil
+    }
+  },
+)
 
 lazy val root = (project in file("."))
   .settings(skip in publish := true)
   .aggregate(core, cats, zio)
 
 lazy val core = (project in file("./core"))
+  .settings(commonSettings)
   .settings(name := "sash")
 
 lazy val cats = (project in file("./cats"))
+  .settings(commonSettings)
   .settings(name := "sash-cats", libraryDependencies ++= Seq("org.typelevel" %% "cats-core" % "1.6.0" % Provided))
   .dependsOn(core % "test->test;compile->compile")
 
 lazy val zio = (project in file("./zio"))
+  .settings(commonSettings)
   .settings(name := "sash-zio", libraryDependencies ++= Seq("org.scalaz" %% "scalaz-zio" % "0.6.1" % Provided))
   .dependsOn(core)
