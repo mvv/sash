@@ -1,0 +1,54 @@
+language: scala
+
+scala:
+  - 2.12.8
+
+jdk:
+  - openjdk8
+
+sudo: false
+
+cache:
+  directories:
+    - $HOME/.ivy2/cache
+    - $HOME/.sbt
+
+before_install:
+  - "test -z \"$encrypted_8f8fd3411df9_key\" || openssl aes-256-cbc -K $encrypted_8f8fd3411df9_key -iv $encrypted_8f8fd3411df9_iv -in project/ci.asc.enc -out project/ci.asc -d
+
+stages:
+  - name: test
+  - name: publish
+    if: branch = master AND type = push
+
+jobs:
+  include:
+    - stage: test
+      name: "Check source code formatting"
+      script: sbt ++$TRAVIS_SCALA_VERSION scalafmtCheck test:scalafmtCheck scalafmtSbtCheck
+    - &test
+      stage: test
+      name: "Build and test for Scala 2.12"
+      script: sbt ++$TRAVIS_SCALA_VERSION test package packageSrc publishLocal
+    - <<: *test
+      scala: 2.11.12
+      name: "Build and test for Scala 2.11"
+    - <<: *test
+      scala: 2.13.0-M5
+      name: "Build and test for Scala 2.13"
+    - &publish
+      stage: publish
+      name: "Publish for Scala 2.12"
+      before_script: gpg --import project/ci.asc
+      script: sbt ++$TRAVIS_SCALA_VERSION publish
+    - <<: *publish
+      scala: 2.11.12
+      name: "Publish for Scala 2.11"
+    - <<: *publish
+      scala: 2.13.0-M5
+      name: "Publish for Scala 2.13"
+
+env:
+  global:
+    - secure: "At321Dk57bfr6U/awfPdAj3SMzLCoePRxn37n1UfvoWs1oBLUO590cLiNtSMLUf0VC9DcMz6rTdY/To1twJOEMeDiuhEihIpHSsMfkXZrpYhyR3cwUhXr+Ia+XaSQCk5mddYMtjGahGDmcf4c9URZX/t5EAUdUFZJ11gqVLHQe0XZVAFVndmc3wIgw1IeXjo9UVPvLjYKO0SyEjX896XvGwrENbIqp+n98+2TE0AVpiw1sulOBZ7CoxojNsyD9JOnKaeX0oVvhCoTzy8hFN2VMz/XxTtn8zVWLZvqA7GsV75Ylv0GVXCOjVuW14VxCH6tdTAEeqgSX1iDtn0/QWBiw7+mTgh2sUkZXPKROmh828IsGjOaQoKBe2EtEVFUaSqTSc/d+RT4wGKq8MN9ZBZfRNlQBQ9nf+D9cR6rS6drs3/UhsgD85X08tzktdCd+otjXv8b/Kxs7bdA+e8OWwc5DOss41DKAprK4bnf+xsz0ICiZPX+S0hdDIZAdDNHbJVGPS/+X3q63WB8X5feDRxQvNNypETnC9N2NFeJ9ZX+gT5YjoQK0TA8oqeNAJi5dZcxTqt2cxQXtcGSUFPktMEL8SHHFSxeN+ztJuc031cotP3l9N0JqQR+nnla5/paoMkZFyd+3cgC0pbLudoi/PsUAHhT8mD+a7B0E6QcR57DgY="
+    - secure: "kcDDvu3WHroz/dvOssRNcIyCmNSMHHD+g1NiSE7Wzy7JUHP4rFxhd3xypkrMz2az8Ha5nAZ+Lv5KwRCcKa2O8kh9aYEWSEynZOKBFj4BdwSMmNuIi5RoSmAMfRZChsVN38pIcPd6Fu2XY1qdLljKoBHhuQ4vI4KKWTX2p9GcMQ9GD4HkD6kLwBCBp3JoUxq1hec/bjTpyb9a/jech/xK55kH/j+tFl4HdR3Mti8AVVIfY48/A/lyAlycbMFXkqNLe2V5jdoJxmFzm0l1BqT8AqBOYvuqILeBBLqnyjcQkjv/hmx97daicofQrngf8WiK8o9AO5iHrDVJRqmA0V3kQlQLEEEty+1z08IVU7l6GgAQGzg8HPODciufQMPNjxEDbD3pbSM38cdoCcIo4Zhn9E481Yoa2NCXIgI3Jm/rLVWfcKHO4CPXN8Ha5d/UNg4Fu4mrEtyg8lU1zpVrUQDWzt14REp36reaP7s41H4iuvRo6tquB9aFRUuxM7RAJC8x7lwh9s1st0eSBkq0aGUtX5IaJi6rdwAKCk7pUbJv3FjrkeExZaYG5VFh65Kp3cJOihk0oBRzMAN4AYvjAoqo8KAk1fJaZyQa0u+4wSh7srneu3iA7Q0QGMgu1ch4WcaM8wh8TIdhzVZW3RVBIQ2Ln+K8nn9pwZZYh2fC6WrpqlI="
