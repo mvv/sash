@@ -1,4 +1,5 @@
 # Sash
+[![Build Status](https://travis-ci.com/mvv/sash.svg?branch=master)](https://travis-ci.com/mvv/sash)
 
 Sash translates regular Scala code into monadic expressions via a blackbox (meaning that it is mostly transparent to your IDE
 typechecker) macro. Unlike some alternatives, Sash clearly splits the code it translates into statements, which are chained
