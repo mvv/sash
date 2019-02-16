@@ -12,13 +12,17 @@ object EffectMacro {
                                       raise: Option[c.Tree => c.Tree],
                                       recover: Option[(c.Tree, c.Tree) => c.Tree],
                                       ensuring: Option[(c.Tree, c.Tree) => c.Tree],
-                                      body: c.Expr[A]): c.Expr[A] = {
+                                      ensuringType: Option[c.Type],
+                                      body: c.Expr[A],
+                                      bodyType: c.Type): c.Expr[A] = {
     import c.universe._
 
-    sealed trait NextStmt
-    case class ConsumesResult(name: TermName, tpe: Type, cont: () => Tree) extends NextStmt
-    case class IgnoresResult(cont: () => Tree) extends NextStmt
-    case object Last extends NextStmt
+    sealed trait NextStmt {
+      def contType: Type
+    }
+    case class ConsumesResult(bindName: TermName, bindType: Type, cont: () => Tree, contType: Type) extends NextStmt
+    case class IgnoresResult(cont: () => Tree, contType: Type) extends NextStmt
+    case class Last(contType: Type) extends NextStmt
 
     //System.err.println(s"INPUT: ${body.tree}")
 
@@ -27,31 +31,35 @@ object EffectMacro {
     val purityTypeSymbol = typeOf[purity].typeSymbol
 
     val processedMarkerName = TermName("__com_github_mvv_sash_processed__")
-    def unitTree(pos: Position, msg: String): Tree = unit.getOrElse {
-      c.error(pos, msg)
+    def getUnitTree(pos: Position): Tree = unit.getOrElse {
+      c.error(pos, "Macro is not configured to translate empty code blocks")
       throw MacroError
     }
-    def recoverTree(pos: Position): (Tree, Tree) => Tree = recover.getOrElse {
+    def getEnsuringType(pos: Position): Type = ensuringType.getOrElse {
+      c.error(pos, "Macro is not configured to translate finally")
+      throw MacroError
+    }
+    def getRecoverTree(pos: Position): (Tree, Tree) => Tree = recover.getOrElse {
       c.error(pos, "Macro is not configured to translate catches")
       throw MacroError
     }
-    def ensuringTree(pos: Position): (Tree, Tree) => Tree = ensuring.getOrElse {
+    def getEnsuringTree(pos: Position): (Tree, Tree) => Tree = ensuring.getOrElse {
       c.error(pos, "Macro is not configured to translate finally")
       throw MacroError
     }
     def effectAnd(tree: Tree, next: NextStmt): Tree = next match {
-      case ConsumesResult(name, tpe, cont) => q"${flatMap(tree)}(($name: $tpe) => ${cont()})"
-      case IgnoresResult(cont)             => q"${flatMap(tree)}(_ => ${cont()})"
-      case Last                            => tree
+      case ConsumesResult(bindName, bindType, cont, _) => q"${flatMap(tree)}(($bindName: $bindType) => ${cont()})"
+      case IgnoresResult(cont, _)                      => q"${flatMap(tree)}(_ => ${cont()})"
+      case Last(contType)                              => q"$tree: $contType"
     }
     def pureAnd(tree: Tree, next: NextStmt): Tree = next match {
-      case ConsumesResult(_, _, cont) =>
-        c.error(tree.pos, "Bound non-effect")
+      case _: ConsumesResult =>
+        c.error(tree.pos, "Unexpected binding")
         throw MacroError
-      case IgnoresResult(cont) =>
+      case IgnoresResult(cont, _) =>
         q"{ $tree; ${cont()} }"
-      case Last =>
-        c.error(tree.pos, "Non-effect at the end of the body")
+      case Last(_) =>
+        c.error(tree.pos, "Non-effect at the end of a code block")
         throw MacroError
     }
     object Effectful {
@@ -101,23 +109,23 @@ object EffectMacro {
         case _                                                  => None
       }
     }
-    def handleExpr(expr: Tree, isStmt: Boolean = false)(cont: Tree => Tree): Tree = expr match {
+    def handleExpr(expr: Tree, contType: Type, isStmt: Boolean = false)(cont: Tree => Tree): Tree = expr match {
       case Effectful(effect) =>
         val tempName = TermName(c.freshName())
-        handleStmt(effect, ConsumesResult(tempName, expr.tpe, () => cont(Ident(tempName))))
+        handleStmt(effect, ConsumesResult(tempName, expr.tpe, () => cont(Ident(tempName)), contType))
       case Purity(purity) =>
         cont(purity)
       case _ if !isStmt && isProcessed(expr) =>
         cont(expr)
       case q"$subExpr.$name" =>
-        handleExpr(subExpr) { subValue =>
+        handleExpr(subExpr, contType) { subValue =>
           cont(treeCopy.Select(expr, subValue, name))
         }
       case q"$fn(..$args)" =>
-        handleExpr(fn) { fnValue =>
+        handleExpr(fn, contType) { fnValue =>
           def handleArgs(unprocessed: Seq[Tree], processed: List[Tree]): Tree = unprocessed.headOption match {
             case Some(arg) =>
-              handleExpr(arg) { argValue =>
+              handleExpr(arg, contType) { argValue =>
                 handleArgs(unprocessed.tail, argValue :: processed)
               }
             case None =>
@@ -126,7 +134,7 @@ object EffectMacro {
           handleArgs(args, Nil)
         }
       case q"$subExpr: $tp" =>
-        handleExpr(subExpr) { subValue =>
+        handleExpr(subExpr, contType) { subValue =>
           cont(treeCopy.Typed(expr, subValue, tp))
         }
       case _ =>
@@ -134,7 +142,7 @@ object EffectMacro {
     }
     def handleStmts(stmt: Tree, rest: Seq[Tree], afterLast: NextStmt): Tree =
       handleStmt(stmt, rest.headOption match {
-        case Some(nextStmt) => IgnoresResult(() => handleStmts(nextStmt, rest.tail, afterLast))
+        case Some(nextStmt) => IgnoresResult(() => handleStmts(nextStmt, rest.tail, afterLast), afterLast.contType)
         case None           => afterLast
       })
     def handleStmt(stmt: Tree, next: NextStmt): Tree = stmt match {
@@ -143,11 +151,13 @@ object EffectMacro {
         throw MacroError
       case q"$mods val $name: $tp = ${expr @ Effectful(effect)}" =>
         val tempName = TermName(c.freshName())
-        handleStmt(
-          effect,
-          ConsumesResult(tempName, expr.tpe, () => pureAnd(treeCopy.ValDef(stmt, mods, name, tp, q"$tempName"), next)))
+        handleStmt(effect,
+                   ConsumesResult(tempName,
+                                  expr.tpe,
+                                  () => pureAnd(treeCopy.ValDef(stmt, mods, name, tp, q"$tempName"), next),
+                                  next.contType))
       case q"$mods val $name: $tp = $expr" =>
-        handleExpr(expr) { value =>
+        handleExpr(expr, next.contType) { value =>
           pureAnd(treeCopy.ValDef(stmt, mods, name, tp, value), next)
         }
       case q"$_ var $_: $_ = $_" =>
@@ -156,73 +166,72 @@ object EffectMacro {
       case DefDef(_, _, _, _, _, _) =>
         pureAnd(stmt, next)
       case q"if ($cond) { ..${Seq()} } else { ..${Seq()} }" =>
-        handleExpr(cond) { condValue =>
-          val branchTree = unitTree(stmt.pos, "Macro is not configured to translate empty code blocks")
+        handleExpr(cond, next.contType) { condValue =>
+          val branchTree = getUnitTree(stmt.pos)
           effectAnd(q"if ($condValue) $branchTree else $branchTree", next)
         }
       case q"if ($cond) $whenTrue else { ..${Seq()} }" =>
-        handleExpr(cond) { condValue =>
+        handleExpr(cond, next.contType) { condValue =>
           next match {
             case _: ConsumesResult =>
               c.error(stmt.pos, "Unexpected binding")
               throw MacroError
-            case IgnoresResult(cont) =>
+            case IgnoresResult(cont, contType) =>
               val restName = TermName(c.freshName("rest"))
               q"""{ def $restName = ${cont()}
-                  ; if ($condValue) ${handleStmt(whenTrue, IgnoresResult(() => q"$restName"))} else $restName }"""
-            case Last =>
-              val elseTree = unitTree(stmt.pos, "Macro is not configured to translate empty code blocks")
-              q"if ($condValue) ${handleStmt(whenTrue, Last)} else $elseTree"
+                  ; if ($condValue) ${handleStmt(whenTrue, IgnoresResult(() => q"$restName", contType))}
+                    else $restName }"""
+            case Last(_) =>
+              c.error(stmt.pos, "Partial conditional at the end of a code block")
+              throw MacroError
           }
         }
       case q"if ($cond) $whenTrue else $whenFalse" =>
-        handleExpr(cond) { condValue =>
-          next match {
-            case ConsumesResult(name, tpe, cont) =>
+        handleExpr(cond, next.contType) { condValue =>
+          val (decls, newNext) = next match {
+            case ConsumesResult(bindName, bindType, cont, contType) =>
               val restName = TermName(c.freshName("rest"))
               val tempName = TermName(c.freshName())
-              q"""{ def $restName($name: $tpe) = ${cont()}
-                  ; if ($condValue)
-                      ${handleStmt(whenTrue, ConsumesResult(tempName, tpe, () => q"$restName($tempName)"))}
-                    else
-                      ${handleStmt(whenFalse, ConsumesResult(tempName, tpe, () => q"$restName($tempName)"))} }"""
-            case IgnoresResult(cont) =>
+              val restNext = ConsumesResult(tempName, bindType, () => q"$restName($tempName)", contType)
+              (Seq(q"def $restName($bindName: $bindType) = ${cont()}"), restNext)
+            case IgnoresResult(cont, contType) =>
               val restName = TermName(c.freshName("rest"))
-              q"""{ def $restName = ${cont()}
-                  ; if ($condValue) ${handleStmt(whenTrue, IgnoresResult(() => q"$restName"))}
-                    else ${handleStmt(whenFalse, IgnoresResult(() => q"$restName"))} }"""
-            case Last =>
-              q"if ($condValue) ${handleStmt(whenTrue, Last)} else ${handleStmt(whenFalse, Last)}"
+              val restNext = IgnoresResult(() => q"$restName", contType)
+              (Seq(q"def $restName = ${cont()}"), restNext)
+            case _: Last =>
+              (Seq.empty, next)
           }
+          val handled = q"if ($condValue) ${handleStmt(whenTrue, newNext)} else ${handleStmt(whenFalse, newNext)}"
+          q"{ ..${decls :+ handled} }"
         }
       case q"$expr match { case ..$cases }" =>
-        handleExpr(expr) { value =>
-          next match {
-            case ConsumesResult(name, tpe, cont) =>
+        handleExpr(expr, next.contType) { value =>
+          val (decls, handledCases) = next match {
+            case ConsumesResult(bindName, bindType, cont, contType) =>
               val restName = TermName(c.freshName("rest"))
               val handledCases = cases.map {
                 case cs @ CaseDef(pat, guard, subStmt) =>
                   val tempName = TermName(c.freshName())
-                  val caseNext = ConsumesResult(tempName, tpe, () => q"$restName($tempName)")
+                  val caseNext = ConsumesResult(tempName, bindType, () => q"$restName($tempName)", contType)
                   treeCopy.CaseDef(cs, pat, guard, handleStmt(subStmt, caseNext))
               }
-              q"""{ def $restName($name: $tpe) = ${cont()}
-                  ; $value match { case ..$handledCases } }"""
-            case IgnoresResult(cont) =>
+              (List(q"def $restName($bindName: $bindType) = ${cont()}"), handledCases)
+            case IgnoresResult(cont, contType) =>
               val restName = TermName(c.freshName("rest"))
               val handledCases = cases.map {
                 case cs @ CaseDef(pat, guard, subStmt) =>
-                  treeCopy.CaseDef(cs, pat, guard, handleStmt(subStmt, IgnoresResult(() => q"$restName")))
+                  treeCopy.CaseDef(cs, pat, guard, handleStmt(subStmt, IgnoresResult(() => q"$restName", contType)))
               }
-              q"""{ def $restName = ${cont()}
-                  ; $value match { case ..$handledCases } }"""
-            case Last =>
+              (List(q"def $restName = ${cont()}"), handledCases)
+            case Last(contType) =>
               val handledCases = cases.map {
                 case cs @ CaseDef(pat, guard, subStmt) =>
-                  treeCopy.CaseDef(cs, pat, guard, handleStmt(subStmt, Last))
+                  treeCopy.CaseDef(cs, pat, guard, handleStmt(subStmt, Last(contType)))
               }
-              q"$value match { case ..$handledCases }"
+              (Nil, handledCases)
           }
+          val handled = q"$value match { case ..$handledCases }"
+          q"{ ..${decls :+ handled} }"
         }
       case q"while ($cond) $whileTrue" =>
         val loopName = TermName(c.freshName("loop"))
@@ -230,30 +239,36 @@ object EffectMacro {
           case _: ConsumesResult =>
             c.error(stmt.pos, "Unexpected binding")
             throw MacroError
-          case IgnoresResult(cont) => cont()
-          case Last                => unitTree(stmt.pos, "Macro is not configured to translate loops")
+          case IgnoresResult(cont, _) =>
+            cont()
+          case Last(_) =>
+            c.error(stmt.pos, "Loop at the end of a code block")
+            throw MacroError
         }
-        val loopBody = handleExpr(cond) { condValue =>
-          q"if ($condValue) ${handleStmt(whileTrue, IgnoresResult(() => q"$loopName"))} else $done"
+        val loopBody = handleExpr(cond, next.contType) { condValue =>
+          q"if ($condValue) ${handleStmt(whileTrue, IgnoresResult(() => q"$loopName", next.contType))} else $done"
         }
-        q"{ def $loopName: ${done.tpe} = $loopBody; $loopName }"
+        q"{ def $loopName: ${next.contType} = $loopBody; $loopName }"
       case q"do $whileTrue while($cond)" =>
         val loopName = TermName(c.freshName("loop"))
         val done = next match {
           case _: ConsumesResult =>
             c.error(stmt.pos, "Unexpected binding")
             throw MacroError
-          case IgnoresResult(cont) => cont()
-          case Last                => unitTree(stmt.pos, "Macro is not configured to translate loops")
+          case IgnoresResult(cont, _) =>
+            cont()
+          case Last(_) =>
+            c.error(stmt.pos, "Loop at the end of a code block")
+            throw MacroError
         }
-        val loopBody = handleStmt(whileTrue, IgnoresResult { () =>
-          handleExpr(cond) { condValue =>
+        val loopBody = handleStmt(whileTrue, IgnoresResult({ () =>
+          handleExpr(cond, next.contType) { condValue =>
             q"if ($condValue) $loopName else $done"
           }
-        })
-        q"{ def $loopName: ${done.tpe} = $loopBody; $loopName }"
+        }, next.contType))
+        q"{ def $loopName: ${next.contType} = $loopBody; $loopName }"
       case q"throw $expr" =>
-        handleExpr(expr) { value =>
+        handleExpr(expr, next.contType) { value =>
           val raiseTree = raise.getOrElse {
             c.error(stmt.pos, "Macro is not configured to translate throws")
             throw MacroError
@@ -261,44 +276,49 @@ object EffectMacro {
           effectAnd(raiseTree(value), next)
         }
       case q"try $tryStmt finally $finallyStmt" =>
-        effectAnd(ensuringTree(stmt.pos)(handleStmt(tryStmt, Last), handleStmt(finallyStmt, Last)), next)
+        val finallyType = getEnsuringType(stmt.pos)
+        effectAnd(getEnsuringTree(stmt.pos)(handleStmt(tryStmt, Last(next.contType)),
+                                            handleStmt(finallyStmt, Last(finallyType))),
+                  next)
       case q"try $tryStmt catch { case ..$catchCases }" =>
-        val handledTry = handleStmt(tryStmt, Last)
+        val handledTry = handleStmt(tryStmt, Last(next.contType))
         val handledCases = catchCases.map {
           case cs @ CaseDef(pat, guard, subStmt) =>
-            treeCopy.CaseDef(cs, pat, guard, handleStmt(subStmt, Last))
+            treeCopy.CaseDef(cs, pat, guard, handleStmt(subStmt, Last(next.contType)))
         }
-        effectAnd(recoverTree(stmt.pos)(handledTry, q"{ case ..$handledCases }"), next)
+        effectAnd(getRecoverTree(stmt.pos)(handledTry, q"{ case ..$handledCases }"), next)
       case q"try $tryStmt catch { case ..$catchCases } finally $finallyStmt" =>
-        val handledTry = handleStmt(tryStmt, Last)
+        val handledTry = handleStmt(tryStmt, Last(next.contType))
         val handledCases = catchCases.map {
           case cs @ CaseDef(pat, guard, subStmt) =>
-            treeCopy.CaseDef(cs, pat, guard, handleStmt(subStmt, Last))
+            treeCopy.CaseDef(cs, pat, guard, handleStmt(subStmt, Last(next.contType)))
         }
-        val handledFinally = handleStmt(finallyStmt, Last)
+        val finallyType = getEnsuringType(stmt.pos)
+        val handledFinally = handleStmt(finallyStmt, Last(finallyType))
         effectAnd(
-          ensuringTree(stmt.pos)(recoverTree(stmt.pos)(handledTry, q"{ case ..$handledCases }"), handledFinally),
+          getEnsuringTree(stmt.pos)(getRecoverTree(stmt.pos)(handledTry, q"{ case ..$handledCases }"), handledFinally),
           next)
       case q"()" =>
-        effectAnd(unitTree(stmt.pos, "Macro is not configured to translate empty code blocks"), next)
+        effectAnd(getUnitTree(stmt.pos), next)
       case q"{ ..${Seq()} }" =>
-        effectAnd(unitTree(stmt.pos, "Macro is not configured to translate empty code blocks"), next)
+        effectAnd(getUnitTree(stmt.pos), next)
       case _ if isProcessed(stmt) =>
         effectAnd(stmt, next)
       case Stmts(subStmt, rest) =>
-        next match {
-          case ConsumesResult(name, tpe, cont) =>
+        val (decls, newNext) = next match {
+          case ConsumesResult(bindName, bindType, cont, contType) =>
             val restName = TermName(c.freshName("rest"))
             val tempName = TermName(c.freshName())
-            q"""{ def $restName($name: $tpe) = ${cont()}
-                ; ${handleStmts(subStmt, rest, ConsumesResult(tempName, tpe, () => q"$restName($tempName)"))} }"""
-          case IgnoresResult(cont) =>
+            val restNext = ConsumesResult(tempName, bindType, () => q"$restName($tempName)", contType)
+            (List(q"def $restName($bindName: $bindType) = ${cont()}"), restNext)
+          case IgnoresResult(cont, contType) =>
             val restName = TermName(c.freshName("rest"))
-            q"""{ def $restName = ${cont()}
-                ; ${handleStmts(subStmt, rest, IgnoresResult(() => q"$restName"))} }"""
-          case Last =>
-            handleStmts(subStmt, rest, next)
+            val restNext = IgnoresResult(() => q"$restName", contType)
+            (List(q"def $restName = ${cont()}"), restNext)
+          case Last(_) =>
+            (Nil, next)
         }
+        q"{ ..${decls :+ handleStmts(subStmt, rest, newNext)} }"
       case TypeDef(_, _, _, _) =>
         pureAnd(stmt, next)
       case ClassDef(_, _, _, _) =>
@@ -313,13 +333,13 @@ object EffectMacro {
       case Impurity(impurity) =>
         pureAnd(impurity, next)
       case _ =>
-        handleExpr(stmt, isStmt = true) { value =>
+        handleExpr(stmt, next.contType, isStmt = true) { value =>
           effectAnd(value, next)
         }
     }
     val bodyTree = body.tree
     val result = try {
-      handleStmt(bodyTree, Last)
+      handleStmt(bodyTree, Last(bodyType))
     } catch {
       case MacroError => return body
     }
