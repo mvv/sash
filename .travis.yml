@@ -38,7 +38,14 @@ jobs:
     - <<: *test
       scala: 2.13.0-M5
       name: "Build and test for Scala 2.13"
-    - stage: publish
-      name: "Publish to Sonatype OSSHR"
+    - &publish
+      stage: publish
+      name: "Publish for Scala 2.12"
       before_script: gpg --import project/ci.asc
-      script: sbt '+ publish' releaseIfNotSnapshot
+      script: sbt ++$TRAVIS_SCALA_VERSION publish releaseIfNotSnapshot
+    - <<: *publish
+      scala: 2.11.12
+      name: "Publish for Scala 2.11"
+    - <<: *publish
+      scala: 2.13.0-M5
+      name: "Publish for Scala 2.13"
