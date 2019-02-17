@@ -14,7 +14,7 @@ cache:
     - $HOME/.sbt
 
 before_install:
-  - "test -z \"$encrypted_36594ebbab48_key\" || (openssl aes-256-cbc -K $encrypted_36594ebbab48_key -iv $encrypted_36594ebbab48_iv -in project/secrets.asc.enc -out - -d | tar -C project -xf -)"
+  - "test -z \"$encrypted_36594ebbab48_key\" || (openssl aes-256-cbc -K $encrypted_36594ebbab48_key -iv $encrypted_36594ebbab48_iv -in project/secrets.tar.enc -out - -d | tar -C project -xf -)"
 
 stages:
   - name: lint
