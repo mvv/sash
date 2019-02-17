@@ -31,6 +31,25 @@ class EffectSpec extends Specification {
       }.trace shouldEqual Push(Said("foo", Pop((), Push(Pop(1, Done(2))))))
     }
 
+    "handle effects in conditions" >> {
+      effect {
+        val x = 1
+        val y = if (x < +TM(2)) "foo" else "bar"
+        TM.say(y)
+      }.trace shouldEqual Push(Pop(2, Said("foo", Done(()))))
+    }
+
+    "handle effects in matched values" >> {
+      effect {
+        val x = 1
+        val y = +TM(2) + x match {
+          case 3 => 10
+          case _ => 11
+        }
+        TM(y)
+      }.trace shouldEqual Push(Pop(2, Done(10)))
+    }
+
     "handle effects in statements" >> {
       effect {
         TM((+TM(1), +TM(2)))

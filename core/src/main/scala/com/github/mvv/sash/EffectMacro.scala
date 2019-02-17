@@ -137,6 +137,14 @@ object EffectMacro {
         handleExpr(subExpr, contType) { subValue =>
           cont(treeCopy.Typed(expr, subValue, tp))
         }
+      case q"if ($cond) $whenTrue else $whenFalse" =>
+        handleExpr(cond, contType) { condValue =>
+          cont(q"if ($condValue) $whenTrue else $whenFalse")
+        }
+      case q"$subExpr match { case ..$cases }" =>
+        handleExpr(subExpr, contType) { subValue =>
+          cont(q"$subValue match { case ..$cases }")
+        }
       case _ =>
         cont(expr)
     }
