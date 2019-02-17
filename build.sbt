@@ -18,7 +18,18 @@ inThisBuild(
 ThisBuild / publishTo := sonatypePublishTo.value
 ThisBuild / publishMavenStyle := true
 
-lazy val releaseIfNotSnapshot: Command = Command.command("releaseIfNotSnapshot") { state =>
+lazy val sonatypeOpenIfNotSnapshot: Command = Command.command("sonatypeOpenIfNotSnapshot") { state =>
+  val extracted = Project.extract(state)
+  if (extracted.get(isSnapshot)) {
+    val log = extracted.get(sLog)
+    log.info("Snapshot version, doing nothing")
+    state
+  } else {
+    Command.process("sonatypeOpen", state)
+  }
+}
+
+lazy val sonatypeReleaseIfNotSnapshot: Command = Command.command("sonatypeReleaseIfNotSnapshot") { state =>
   val extracted = Project.extract(state)
   if (extracted.get(isSnapshot)) {
     val log = extracted.get(sLog)
@@ -63,10 +74,12 @@ lazy val commonSettings = Seq(
 )
 
 lazy val root = (project in file("."))
-  .settings(crossScalaVersions := Nil,
-            skip in publish := true,
-            sonatypeProfileName := "com.github.mvv",
-            commands ++= Seq(releaseIfNotSnapshot))
+  .settings(
+    crossScalaVersions := Nil,
+    skip in publish := true,
+    sonatypeProfileName := "com.github.mvv",
+    commands ++= Seq(sonatypeOpenIfNotSnapshot, sonatypeReleaseIfNotSnapshot)
+  )
   .aggregate(core, cats, zio)
 
 lazy val core = (project in file("./core"))
