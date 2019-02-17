@@ -25,7 +25,9 @@ lazy val sonatypeOpenIfNotSnapshot: Command = Command.command("sonatypeOpenIfNot
     log.info("Snapshot version, doing nothing")
     state
   } else {
-    Command.process("sonatypeOpen", state)
+    val scalaVer = extracted.get(scalaBinaryVersion)
+    val projectVer = extracted.get(version)
+    Command.process(s"sonatypeOpen Sash_$scalaVer-$projectVer", state)
   }
 }
 
