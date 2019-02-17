@@ -1,4 +1,6 @@
 # Sash
+[![Release Version](https://img.shields.io/nexus/r/https/oss.sonatype.org/com.github.mvv.sash/sash_2.12.svg)](https://oss.sonatype.org/content/repositories/releases/com/github/mvv/sash)
+[![Snapshot Version](https://img.shields.io/nexus/s/https/oss.sonatype.org/com.github.mvv.sash/sash_2.12.svg)](https://oss.sonatype.org/content/repositories/snapshots/com/github/mvv/sash)
 [![Build Status](https://travis-ci.com/mvv/sash.svg?branch=master)](https://travis-ci.com/mvv/sash)
 
 Sash translates regular Scala code into monadic expressions via a blackbox (meaning that it is mostly transparent to your IDE
