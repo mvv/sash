@@ -3,10 +3,11 @@
 [![Snapshot Version](https://img.shields.io/nexus/s/https/oss.sonatype.org/com.github.mvv.sash/sash_2.12.svg)](https://oss.sonatype.org/content/repositories/snapshots/com/github/mvv/sash)
 [![Build Status](https://travis-ci.com/mvv/sash.svg?branch=master)](https://travis-ci.com/mvv/sash)
 
-Sash translates regular Scala code into monadic expressions via a blackbox (meaning that it is mostly transparent to your IDE
-typechecker) macro. Unlike some alternatives, Sash clearly splits the code it translates into statements, which are chained
-together via some version of `flatMap`, and expressions, which are searched for effectful subexpressions. This approach
-eliminates the need for the infamous `_ <- EFFECT` construct or its equivalents:
+Sash translates regular Scala code into monadic expressions via a blackbox (meaning that it is mostly transparent to
+your IDE typechecker) macro. Unlike some alternatives, Sash [clearly](#translation-rules) splits the code it translates
+into statements, which are chained together via some version of `flatMap`, and expressions, which are searched for
+effectful subexpressions. This approach eliminates the need for the infamous `_ <- EFFECT` construct or its
+equivalents:
 
 ```scala
 import com.github.mvv.sash.zio._
@@ -69,10 +70,10 @@ Core Sash module
 libraryDependencies += "com.github.mvv.sash" %% "sash" % "0.1-M1"
 ```
 
-provides a "simple" version of the `effect` macro, which relies only on `flatMap` method. It can handle conditionals and loops,
-but cannot handle try-catch-finally. The module also exposes the imlementation of the macro, which can be configured to handle
-your favourite monads via a small compatibility layer. Sash comes with two such layers: one for the
-[Cats](https://typelevel.org/cats) library
+provides a "simple" version of the `effect` macro, which relies only on `flatMap` method. It can handle conditionals
+and loops, but cannot handle try-catch-finally. The module also exposes the imlementation of the macro, which can be
+configured to handle your favourite monads via a small compatibility layer. Sash comes with two such layers: one for
+the [Cats](https://typelevel.org/cats) library
 
 ```scala
 libraryDependencies += "com.github.mvv.sash" %% "sash-cats" % "0.1-M1"
@@ -96,8 +97,8 @@ Translation starts with the argument of the macro, which is treated as a stateme
   * A variable declaration `[implicit] val NAME[: TYPE] = EXPR`
   * An error raising statement `throw EXPR`
   * An error handling statement `try STMT [catch { [case ... => STMT]* }] [finally STMT]`
-  * An import or a type/class/trait/object/function definition. Those are left left as-is, meaning that they are simply brought
-    into scope of the subsequent statements.
+  * An import or a type/class/trait/object/function definition. Those are left left as-is, meaning that they are
+    simply brought into scope of the subsequent statements.
   * Impure code `impure CODE`, where `CODE` is a regular Scala code
   * An expression `EXPR`
 
