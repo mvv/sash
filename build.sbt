@@ -3,7 +3,7 @@ import xerial.sbt.Sonatype._
 inThisBuild(
   Seq(
     organization := "com.github.mvv.sash",
-    version := "0.1-SNAPSHOT",
+    version := "0.1-M1",
     homepage := Some(url("https://github.com/mvv/sash")),
     scmInfo := Some(ScmInfo(url("https://github.com/mvv/sash"), "scm:git@github.com:mvv/sash.git")),
     licenses := List("Apache-2.0" -> url("http://www.apache.org/licenses/LICENSE-2.0")),
@@ -18,6 +18,23 @@ inThisBuild(
 ThisBuild / publishTo := sonatypePublishTo.value
 ThisBuild / publishMavenStyle := true
 
+lazy val releaseIfNotSnapshot: Command = Command.command("releaseIfNotSnapshot") { state =>
+  val extracted = Project.extract(state)
+  if (extracted.get(isSnapshot)) {
+    val log = extracted.get(sLog)
+    log.info("Snapshot version, doing nothing")
+    state
+  } else {
+    Command.process("sonatypeRelease", state)
+  }
+}
+
+lazy val scala2_11 = "2.11.12"
+lazy val scala2_12 = "2.12.8"
+lazy val scala2_13 = "2.13.0-M5"
+
+ThisBuild / scalaVersion := scala2_12
+
 def isPriorTo2_13(version: String): Boolean =
   CrossVersion.partialVersion(version) match {
     case Some((2, minor)) => minor < 13
@@ -25,8 +42,7 @@ def isPriorTo2_13(version: String): Boolean =
   }
 
 lazy val commonSettings = Seq(
-  crossScalaVersions := Seq("2.12.8", "2.11.12", "2.13.0-M5"),
-  scalaVersion := crossScalaVersions.value.head,
+  crossScalaVersions := Seq(scala2_11, scala2_12, scala2_13),
   scalacOptions ++= Seq("-feature", "-deprecation", "-unchecked", "-Xfatal-warnings"),
   scalacOptions ++= {
     if (isPriorTo2_13(scalaVersion.value)) {
@@ -47,7 +63,10 @@ lazy val commonSettings = Seq(
 )
 
 lazy val root = (project in file("."))
-  .settings(skip in publish := true)
+  .settings(crossScalaVersions := Nil,
+            skip in publish := true,
+            sonatypeProfileName := "com.github.mvv",
+            commands ++= Seq(releaseIfNotSnapshot))
   .aggregate(core, cats, zio)
 
 lazy val core = (project in file("./core"))
