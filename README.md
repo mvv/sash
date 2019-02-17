@@ -81,3 +81,31 @@ and one for the [ZIO](https://github.com/scalaz/scalaz-zio)
 ```scala
 libraryDependencies += "com.github.mvv.sash" %% "sash-zio" % "0.1-SNAPSHOT"
 ```
+
+## Translation rules
+
+Translation starts with the argument of the macro, which is treated as a statement. A statement can be
+
+  * A unit value `()`
+  * A block `{ [STMT]* }` of statements
+  * A conditional `if (EXPR) STMT [else STMT]`
+  * A match `EXPR match { [case ... => STMT]* }`
+  * A loop `while (EXPR) STMT` or `do STMT while (EXPR)`
+  * A variable declaration `[implicit] val NAME[: TYPE] = EXPR`
+  * An error raising statement `throw EXPR`
+  * An error handling statement `try STMT [catch { [case ... => STMT]* }] [finally STMT]`
+  * An import or a type/class/trait/object/function definition. Those are left left as-is, meaning that they are simply brought
+    into scope of the subsequent statements.
+  * Impure code `impure CODE`, where `CODE` is a regular Scala code
+  * An expression `EXPR`
+
+Expressions `EXPR` are analyzed further, to see if they are
+
+  * Effectful `+STMT`
+  * Pure `pure CODE`, where `CODE` is a regular Scala code
+  * Typed `EXPR: TYPE`
+  * An application `EXPR([EXPR]*)`
+  * An accessor `EXPR.NAME`
+  * A conditional `if (EXPR) CODE else CODE`
+  * A match `EXPR match { [case ... => CODE] }`
+  * A regular Scala code `CODE`
