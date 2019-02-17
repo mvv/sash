@@ -15,7 +15,7 @@ import scalaz.zio._
 import scalaz.zio.console._
 import java.io.IOException
 
-def demand(thing: String): IO[IOException, Unit] = effect[IOException] {
+def askFor(thing: String): IO[IOException, Unit] = effect[IOException] {
   def ask = effect {
     try getStrLn
     catch {
@@ -26,7 +26,7 @@ def demand(thing: String): IO[IOException, Unit] = effect[IOException] {
   }
   putStrLn(s"Enter $thing")
   val answer = +Ref.make(+ask)
-  while(+answer.get != thing) {
+  while (+answer.get != thing) {
     putStrLn(s"No, enter $thing")
     answer.set(+ask)
   }
