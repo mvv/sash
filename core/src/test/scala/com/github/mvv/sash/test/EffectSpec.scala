@@ -168,5 +168,12 @@ class EffectSpec extends Specification {
       }.trace shouldEqual Push(Said("start", Pop((),
                             Push(Push(Pop(2, Push(Said("true", Pop((), Pop((), Said("end", Done(()))))))))))))
     }
+
+    "handle patterns in variable bindings" >> {
+      effect {
+        val (x, y) = (+TM(1), +TM(2))
+        TM(x + y)
+      }.trace shouldEqual Push(Pop(1, Push(Pop(2, Done(3)))))
+    }
   }
 }
