@@ -10,9 +10,9 @@ abstract class EffectMacro {
 
   private object MacroError extends RuntimeException
 
-  private lazy val effectfulTypeSymbol = typeOf[effectful].typeSymbol
-  private lazy val impurityTypeSymbol = typeOf[impurity].typeSymbol
-  private lazy val purityTypeSymbol = typeOf[purity].typeSymbol
+  private val effectfulTypeSymbol = typeOf[effectful].typeSymbol
+  private val impurityTypeSymbol = typeOf[impurity].typeSymbol
+  private val purityTypeSymbol = typeOf[purity].typeSymbol
 
   private object Effectful {
     def unapply(tree: Tree): Option[Tree] = tree match {
@@ -53,9 +53,9 @@ abstract class EffectMacro {
     }
   }
 
-  private lazy val unapplyName = TermName("unapply")
-  private lazy val unapplySeqName = TermName("unapply")
-  private lazy val SELECTOR_DUMMY = TermName("<unapply-selector>")
+  private val unapplyName = TermName("unapply")
+  private val unapplySeqName = TermName("unapply")
+  private val SELECTOR_DUMMY = TermName("<unapply-selector>")
 
   private def stripUnApplyFromPat(pat: Tree): Tree = pat match {
     case UnApply(app @ Apply(TypeApply(Select(qual, `unapplyName` | `unapplySeqName`), _), List(Ident(SELECTOR_DUMMY))),
@@ -111,7 +111,7 @@ abstract class EffectMacro {
       expr
   }
 
-  private lazy val processedMarkerName = TermName("__com_github_mvv_sash_processed__")
+  private val processedMarkerName = TermName("__com_github_mvv_sash_processed__")
 
   private def isProcessed(tree: Tree): Boolean = tree match {
     case q"{ $_ val ${`processedMarkerName`}: $_ = $_; ..$_ }" => true

@@ -10,7 +10,7 @@ object SimpleEffectMacro extends {
     def flatMap = { value: Tree =>
       q"$value.flatMap"
     }
-    val impl = new EffectMacro { override val c: ctx.type = ctx }
+    val impl = new { val c: ctx.type = ctx } with EffectMacro
     impl.effectImpl(predef = Seq.empty,
                     unit = None,
                     flatMap = flatMap,

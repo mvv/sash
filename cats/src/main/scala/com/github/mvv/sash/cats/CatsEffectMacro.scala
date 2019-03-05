@@ -22,7 +22,7 @@ object CatsEffectMacro {
     val recover = { (action: Tree, handler: Tree) =>
       q"implicitly[_root_.cats.ApplicativeError[$cons, _root_.java.lang.Throwable]].recoverWith($action)($handler)"
     }
-    val impl = new EffectMacro { override val c: ctx.type = ctx }
+    val impl = new { val c: ctx.type = ctx } with EffectMacro
     impl.effectImpl(
       predef = predef,
       unit = Some(unit),

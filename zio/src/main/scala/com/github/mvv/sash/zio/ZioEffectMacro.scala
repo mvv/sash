@@ -25,7 +25,7 @@ object ZioEffectMacro {
     }
     val ensuringType = ctx.typecheck(unit).tpe
     val bodyType = ctx.typecheck(q"(null: _root_.scalaz.zio.IO[${errorTag.tpe}, ${resultTag.tpe}])").tpe
-    val impl = new EffectMacro { override val c: ctx.type = ctx }
+    val impl = new { val c: ctx.type = ctx } with EffectMacro
     impl.effectImpl(
       predef = Seq.empty,
       unit = Some(unit),
@@ -51,7 +51,7 @@ object ZioEffectMacro {
       q"_root_.scalaz.zio.stream.Stream.fail($value)"
     }
     val bodyType = ctx.typecheck(q"(null: _root_.scalaz.zio.stream.Stream[${errorTag.tpe}, ${resultTag.tpe}])").tpe
-    val impl = new EffectMacro { override val c: ctx.type = ctx }
+    val impl = new { val c: ctx.type = ctx } with EffectMacro
     impl.effectImpl(predef = Seq.empty,
                     unit = Some(unit),
                     flatMap = flatMap,
