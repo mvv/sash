@@ -3,34 +3,148 @@ package com.github.mvv.sash
 import scala.reflect.macros.TypecheckException
 import scala.reflect.macros.blackbox.Context
 
-object EffectMacro {
+abstract class EffectMacro {
+  val c: Context
+
+  import c.universe._
+
   private object MacroError extends RuntimeException
 
-  final def effectImpl[A](c: Context)(predef: Seq[c.Tree],
-                                      unit: Option[c.Tree],
-                                      flatMap: c.Tree => c.Tree,
-                                      raise: Option[c.Tree => c.Tree],
-                                      recover: Option[(c.Tree, c.Tree) => c.Tree],
-                                      ensuring: Option[(c.Tree, c.Tree) => c.Tree],
-                                      ensuringType: Option[c.Type],
-                                      body: c.Expr[A],
-                                      bodyType: c.Type): c.Expr[A] = {
-    import c.universe._
+  private lazy val effectfulTypeSymbol = typeOf[effectful].typeSymbol
+  private lazy val impurityTypeSymbol = typeOf[impurity].typeSymbol
+  private lazy val purityTypeSymbol = typeOf[purity].typeSymbol
 
+  private object Effectful {
+    def unapply(tree: Tree): Option[Tree] = tree match {
+      case Apply(fn @ Select(Apply(_, List(effect)), TermName("unary_$plus")), Nil) =>
+        if (fn.symbol.annotations.exists(_.tree.tpe.typeSymbol == effectfulTypeSymbol)) {
+          Some(effect)
+        } else {
+          None
+        }
+      case _ =>
+        None
+    }
+  }
+
+  private object Impurity {
+    def unapply(tree: Tree): Option[Tree] = tree match {
+      case Apply(fn, List(impurity)) =>
+        if (fn.symbol.annotations.exists(_.tree.tpe.typeSymbol == impurityTypeSymbol)) {
+          Some(impurity)
+        } else {
+          None
+        }
+      case _ =>
+        None
+    }
+  }
+
+  private object Purity {
+    def unapply(tree: Tree): Option[Tree] = tree match {
+      case Apply(fn, List(purity)) =>
+        if (fn.symbol.annotations.exists(_.tree.tpe.typeSymbol == purityTypeSymbol)) {
+          Some(purity)
+        } else {
+          None
+        }
+      case _ =>
+        None
+    }
+  }
+
+  private lazy val unapplyName = TermName("unapply")
+  private lazy val unapplySeqName = TermName("unapply")
+  private lazy val SELECTOR_DUMMY = TermName("<unapply-selector>")
+
+  private def stripUnApplyFromPat(pat: Tree): Tree = pat match {
+    case UnApply(app @ Apply(TypeApply(Select(qual, `unapplyName` | `unapplySeqName`), _), List(Ident(SELECTOR_DUMMY))),
+                 args) =>
+      treeCopy.Apply(app, qual, args.map(stripUnApplyFromPat))
+    case UnApply(fn, args) =>
+      treeCopy.UnApply(pat, fn, args.map(stripUnApplyFromPat))
+    case Apply(fn, args) =>
+      treeCopy.Apply(pat, fn, args.map(stripUnApplyFromPat))
+    case Bind(name, subPat) =>
+      treeCopy.Bind(pat, name, stripUnApplyFromPat(subPat))
+    case _ =>
+      pat
+  }
+
+  private def stripUnApplyFromCase(recur: Tree => Tree)(cs: CaseDef): CaseDef = cs match {
+    case CaseDef(pat, guard, whenMatches) =>
+      CaseDef(stripUnApplyFromPat(pat), stripUnApply(guard), recur(whenMatches))
+  }
+
+  private def stripUnApply(expr: Tree): Tree = expr match {
+    case Select(subExpr, name) =>
+      Select(stripUnApply(subExpr), name)
+    case Apply(fn, args) =>
+      Apply(stripUnApply(fn), args.map(stripUnApply))
+    case Function(params, subExpr) =>
+      Function(params, stripUnApply(subExpr))
+    case TypeApply(fn, args) =>
+      TypeApply(stripUnApply(fn), args)
+    case Typed(subExpr, tpe) =>
+      Typed(stripUnApply(subExpr), tpe)
+    case Block(stmts, subExpr) =>
+      Block(stmts.map(stripUnApply), stripUnApply(subExpr))
+    case If(cond, whenTrue, whenFalse) =>
+      If(stripUnApply(cond), stripUnApply(whenTrue), stripUnApply(whenFalse))
+    case Match(subExpr, cases) =>
+      Match(stripUnApply(subExpr), cases.map(stripUnApplyFromCase(stripUnApply)))
+    case ValDef(mods, name, tp, subExpr) =>
+      treeCopy.ValDef(expr, mods, name, tp, stripUnApply(subExpr))
+    case DefDef(mods, name, typeParams, params, tp, subExpr) =>
+      treeCopy.DefDef(expr, mods, name, typeParams, params, tp, stripUnApply(subExpr))
+    case q"while ($cond) $subExpr" =>
+      q"while (${stripUnApply(cond)}) ${stripUnApply(subExpr)}"
+    case q"do $subExpr while ($cond)" =>
+      q"do ${stripUnApply(subExpr)} while (${stripUnApply(cond)})"
+    case Throw(subExpr) =>
+      Throw(stripUnApply(subExpr))
+    case Try(block, catches, finalizer) =>
+      Try(stripUnApply(block), catches.map(stripUnApplyFromCase(stripUnApply)), stripUnApply(finalizer))
+    case Return(subExpr) =>
+      Return(stripUnApply(subExpr))
+    case _ =>
+      expr
+  }
+
+  private lazy val processedMarkerName = TermName("__com_github_mvv_sash_processed__")
+
+  private def isProcessed(tree: Tree): Boolean = tree match {
+    case q"{ $_ val ${`processedMarkerName`}: $_ = $_; ..$_ }" => true
+    case _                                                     => false
+  }
+
+  private object Stmts {
+    def unapply(tree: Tree): Option[(Tree, Seq[Tree])] = tree match {
+      case Block(Nil, last)                                   => Some((last, Nil))
+      case q"{ ..${Seq(first, rest @ _*)} }" if rest.nonEmpty => Some((first, rest))
+      case _                                                  => None
+    }
+  }
+
+  final def effectImpl[A](predef: Seq[Tree],
+                          unit: Option[Tree],
+                          flatMap: Tree => Tree,
+                          raise: Option[Tree => Tree],
+                          recover: Option[(Tree, Tree) => Tree],
+                          ensuring: Option[(Tree, Tree) => Tree],
+                          ensuringType: Option[Type],
+                          body: Expr[A],
+                          bodyType: Type): Expr[A] = {
     sealed trait NextStmt {
       def contType: Type
     }
-    case class ConsumesResult(bindName: TermName, bindType: Type, cont: () => Tree, contType: Type) extends NextStmt
-    case class IgnoresResult(cont: () => Tree, contType: Type) extends NextStmt
-    case class Last(contType: Type) extends NextStmt
+    final case class ConsumesResult(bindName: TermName, bindType: Type, cont: () => Tree, contType: Type)
+        extends NextStmt
+    final case class IgnoresResult(cont: () => Tree, contType: Type) extends NextStmt
+    final case class Last(contType: Type) extends NextStmt
 
     //System.err.println(s"INPUT: ${body.tree}")
 
-    val effectfulTypeSymbol = typeOf[effectful].typeSymbol
-    val impurityTypeSymbol = typeOf[impurity].typeSymbol
-    val purityTypeSymbol = typeOf[purity].typeSymbol
-
-    val processedMarkerName = TermName("__com_github_mvv_sash_processed__")
     def getUnitTree(pos: Position): Tree = unit.getOrElse {
       c.error(pos, "Macro is not configured to translate empty code blocks")
       throw MacroError
@@ -62,66 +176,20 @@ object EffectMacro {
         c.error(tree.pos, "Non-effect at the end of a code block")
         throw MacroError
     }
-    object Effectful {
-      def unapply(tree: Tree): Option[Tree] = tree match {
-        case Apply(fn @ Select(Apply(_, List(effect)), TermName("unary_$plus")), Nil) =>
-          if (fn.symbol.annotations.exists(_.tree.tpe.typeSymbol == effectfulTypeSymbol)) {
-            Some(effect)
-          } else {
-            None
-          }
-        case _ =>
-          None
-      }
-    }
-    object Impurity {
-      def unapply(tree: Tree): Option[Tree] = tree match {
-        case Apply(fn, List(impurity)) =>
-          if (fn.symbol.annotations.exists(_.tree.tpe.typeSymbol == impurityTypeSymbol)) {
-            Some(impurity)
-          } else {
-            None
-          }
-        case _ =>
-          None
-      }
-    }
-    object Purity {
-      def unapply(tree: Tree): Option[Tree] = tree match {
-        case Apply(fn, List(purity)) =>
-          if (fn.symbol.annotations.exists(_.tree.tpe.typeSymbol == purityTypeSymbol)) {
-            Some(purity)
-          } else {
-            None
-          }
-        case _ =>
-          None
-      }
-    }
-    def isProcessed(tree: Tree): Boolean = tree match {
-      case q"{ $_ val ${`processedMarkerName`}: $_ = $_; ..$_ }" => true
-      case _                                                     => false
-    }
-    object Stmts {
-      def unapply(tree: Tree): Option[(Tree, Seq[Tree])] = tree match {
-        case Block(Nil, last)                                   => Some((last, Nil))
-        case q"{ ..${Seq(first, rest @ _*)} }" if rest.nonEmpty => Some((first, rest))
-        case _                                                  => None
-      }
-    }
+
     def handleExpr(expr: Tree, contType: Type, isStmt: Boolean = false)(cont: Tree => Tree): Tree = expr match {
       case Effectful(effect) =>
         val tempName = TermName(c.freshName())
         handleStmt(effect, ConsumesResult(tempName, expr.tpe, () => cont(Ident(tempName)), contType))
       case Purity(purity) =>
-        cont(purity)
+        cont(stripUnApply(purity))
       case _ if !isStmt && isProcessed(expr) =>
-        cont(expr)
-      case q"$subExpr.$name" =>
+        cont(stripUnApply(expr))
+      case Select(subExpr, name) =>
         handleExpr(subExpr, contType) { subValue =>
-          cont(treeCopy.Select(expr, subValue, name))
+          cont(Select(subValue, name))
         }
-      case q"$fn(..$args)" =>
+      case Apply(fn, args) =>
         handleExpr(fn, contType) { fnValue =>
           def handleArgs(unprocessed: Seq[Tree], processed: List[Tree]): Tree = unprocessed.headOption match {
             case Some(arg) =>
@@ -129,24 +197,28 @@ object EffectMacro {
                 handleArgs(unprocessed.tail, argValue :: processed)
               }
             case None =>
-              cont(treeCopy.Apply(expr, fnValue, processed.reverse))
+              cont(Apply(fnValue, processed.reverse))
           }
           handleArgs(args, Nil)
         }
-      case q"$subExpr: $tp" =>
-        handleExpr(subExpr, contType) { subValue =>
-          cont(treeCopy.Typed(expr, subValue, tp))
+      case TypeApply(fn, args) =>
+        handleExpr(fn, contType) { fnValue =>
+          cont(TypeApply(fnValue, args))
         }
-      case q"if ($cond) $whenTrue else $whenFalse" =>
+      case Typed(subExpr, tp) =>
+        handleExpr(subExpr, contType) { subValue =>
+          cont(Typed(subValue, tp))
+        }
+      case If(cond, whenTrue, whenFalse) =>
         handleExpr(cond, contType) { condValue =>
-          cont(q"if ($condValue) $whenTrue else $whenFalse")
+          cont(If(condValue, stripUnApply(whenTrue), stripUnApply(whenFalse)))
         }
-      case q"$subExpr match { case ..$cases }" =>
+      case Match(subExpr, cases) =>
         handleExpr(subExpr, contType) { subValue =>
-          cont(q"$subValue match { case ..$cases }")
+          cont(Match(subValue, cases.map(stripUnApplyFromCase(stripUnApply))))
         }
       case _ =>
-        cont(expr)
+        cont(stripUnApply(expr))
     }
     def handleStmts(stmt: Tree, rest: Seq[Tree], afterLast: NextStmt): Tree =
       handleStmt(stmt, rest.headOption match {
@@ -171,8 +243,8 @@ object EffectMacro {
       case q"$_ var $_: $_ = $_" =>
         c.error(stmt.pos, "Mutable variables are not supported")
         throw MacroError
-      case DefDef(_, _, _, _, _, _) =>
-        pureAnd(stmt, next)
+      case DefDef(mods, name, typeParams, params, tp, expr) =>
+        pureAnd(treeCopy.DefDef(stmt, mods, name, typeParams, params, tp, stripUnApply(expr)), next)
       case q"if ($cond) { ..${Seq()} } else { ..${Seq()} }" =>
         handleExpr(cond, next.contType) { condValue =>
           val branchTree = getUnitTree(stmt.pos)
@@ -217,25 +289,19 @@ object EffectMacro {
           val (decls, handledCases) = next match {
             case ConsumesResult(bindName, bindType, cont, contType) =>
               val restName = TermName(c.freshName("rest"))
-              val handledCases = cases.map {
-                case cs @ CaseDef(pat, guard, subStmt) =>
-                  val tempName = TermName(c.freshName())
-                  val caseNext = ConsumesResult(tempName, bindType, () => q"$restName($tempName)", contType)
-                  treeCopy.CaseDef(cs, pat, guard, handleStmt(subStmt, caseNext))
-              }
+              val handledCases = cases.map(stripUnApplyFromCase { subStmt =>
+                val tempName = TermName(c.freshName())
+                val caseNext = ConsumesResult(tempName, bindType, () => q"$restName($tempName)", contType)
+                handleStmt(subStmt, caseNext)
+              })
               (List(q"def $restName($bindName: $bindType) = ${cont()}"), handledCases)
             case IgnoresResult(cont, contType) =>
               val restName = TermName(c.freshName("rest"))
-              val handledCases = cases.map {
-                case cs @ CaseDef(pat, guard, subStmt) =>
-                  treeCopy.CaseDef(cs, pat, guard, handleStmt(subStmt, IgnoresResult(() => q"$restName", contType)))
-              }
+              val handledCases =
+                cases.map(stripUnApplyFromCase(handleStmt(_, IgnoresResult(() => q"$restName", contType))))
               (List(q"def $restName = ${cont()}"), handledCases)
             case Last(contType) =>
-              val handledCases = cases.map {
-                case cs @ CaseDef(pat, guard, subStmt) =>
-                  treeCopy.CaseDef(cs, pat, guard, handleStmt(subStmt, Last(contType)))
-              }
+              val handledCases = cases.map(stripUnApplyFromCase(handleStmt(_, Last(contType))))
               (Nil, handledCases)
           }
           val handled = q"$value match { case ..$handledCases }"
@@ -275,7 +341,7 @@ object EffectMacro {
           }
         }, next.contType))
         q"{ def $loopName: ${next.contType} = $loopBody; $loopName }"
-      case q"throw $expr" =>
+      case Throw(expr) =>
         handleExpr(expr, next.contType) { value =>
           val raiseTree = raise.getOrElse {
             c.error(stmt.pos, "Macro is not configured to translate throws")
@@ -290,17 +356,11 @@ object EffectMacro {
                   next)
       case q"try $tryStmt catch { case ..$catchCases }" =>
         val handledTry = handleStmt(tryStmt, Last(next.contType))
-        val handledCases = catchCases.map {
-          case cs @ CaseDef(pat, guard, subStmt) =>
-            treeCopy.CaseDef(cs, pat, guard, handleStmt(subStmt, Last(next.contType)))
-        }
+        val handledCases = catchCases.map(stripUnApplyFromCase(handleStmt(_, Last(next.contType))))
         effectAnd(getRecoverTree(stmt.pos)(handledTry, q"{ case ..$handledCases }"), next)
       case q"try $tryStmt catch { case ..$catchCases } finally $finallyStmt" =>
         val handledTry = handleStmt(tryStmt, Last(next.contType))
-        val handledCases = catchCases.map {
-          case cs @ CaseDef(pat, guard, subStmt) =>
-            treeCopy.CaseDef(cs, pat, guard, handleStmt(subStmt, Last(next.contType)))
-        }
+        val handledCases = catchCases.map(stripUnApplyFromCase(handleStmt(_, Last(next.contType))))
         val finallyType = getEnsuringType(stmt.pos)
         val handledFinally = handleStmt(finallyStmt, Last(finallyType))
         effectAnd(
@@ -339,7 +399,7 @@ object EffectMacro {
         c.error(stmt.pos, "Return statements are not supported")
         throw MacroError
       case Impurity(impurity) =>
-        pureAnd(impurity, next)
+        pureAnd(stripUnApply(impurity), next)
       case _ =>
         handleExpr(stmt, next.contType, isStmt = true) { value =>
           effectAnd(value, next)

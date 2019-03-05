@@ -175,5 +175,20 @@ class EffectSpec extends Specification {
         TM(x + y)
       }.trace shouldEqual Push(Pop(1, Push(Pop(2, Done(3)))))
     }
+
+    "handle patterns with type parameters in unapply" >> {
+      object Foo {
+        def unapply(x: Any): Option[Any] = Some(x)
+      }
+      object Bar {
+        def unapply[A](x: Any): Option[Any] = Some(x)
+      }
+      effect {
+        TM(1).flatMap {
+          case Bar(x) => TM(x)
+          case Foo(y @ Bar(_)) => TM(y)
+        }
+      }.trace shouldEqual Push(Pop(1, Done(1)))
+    }
   }
 }
