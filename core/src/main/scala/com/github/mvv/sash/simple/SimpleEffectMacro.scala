@@ -5,20 +5,19 @@ import com.github.mvv.sash.EffectMacro
 import scala.reflect.macros.blackbox.Context
 
 object SimpleEffectMacro extends {
-  final def effectImpl[A](ctx: Context)(body: ctx.Expr[A])(implicit bodyTag: ctx.WeakTypeTag[A]): ctx.Expr[A] = {
-    import ctx.universe._
+  final def effectImpl[A](c: Context)(body: c.Expr[A])(implicit bodyTag: c.WeakTypeTag[A]): c.Expr[A] = {
+    import c.universe._
     def flatMap = { value: Tree =>
       q"$value.flatMap"
     }
-    val impl = new { val c: ctx.type = ctx } with EffectMacro
-    impl.effectImpl(predef = Seq.empty,
-                    unit = None,
-                    flatMap = flatMap,
-                    raise = None,
-                    recover = None,
-                    ensuring = None,
-                    ensuringType = None,
-                    body = body,
-                    bodyType = bodyTag.tpe)
+    EffectMacro.effectImpl(c)(predef = Seq.empty,
+                              unit = None,
+                              flatMap = flatMap,
+                              raise = None,
+                              recover = None,
+                              ensuring = None,
+                              ensuringType = None,
+                              body = body,
+                              bodyType = bodyTag.tpe)
   }
 }

@@ -3,9 +3,7 @@ package com.github.mvv.sash
 import scala.reflect.macros.TypecheckException
 import scala.reflect.macros.blackbox.Context
 
-abstract class EffectMacro {
-  val c: Context
-
+class EffectMacro[C <: Context](val c: C) {
   import c.universe._
 
   private object MacroError extends RuntimeException
@@ -61,8 +59,11 @@ abstract class EffectMacro {
     case UnApply(app @ Apply(TypeApply(Select(qual, `unapplyName` | `unapplySeqName`), _), List(Ident(SELECTOR_DUMMY))),
                  args) =>
       treeCopy.Apply(app, qual, args.map(stripUnApplyFromPat))
-    case UnApply(fn, args) =>
-      treeCopy.UnApply(pat, fn, args.map(stripUnApplyFromPat))
+    case UnApply(app @ Apply(Select(qual, `unapplyName` | `unapplySeqName`), List(Ident(SELECTOR_DUMMY))), args) =>
+      treeCopy.Apply(app, qual, args.map(stripUnApplyFromPat))
+    case UnApply(_, _) =>
+      c.error(pat.pos, "Unexpected UnApply form")
+      throw MacroError
     case Apply(fn, args) =>
       treeCopy.Apply(pat, fn, args.map(stripUnApplyFromPat))
     case Bind(name, subPat) =>
@@ -423,5 +424,20 @@ abstract class EffectMacro {
     }
     //System.err.println(s"TYPED: $typed")
     c.Expr[A](typed)
+  }
+}
+
+object EffectMacro {
+  final def effectImpl[A](c: Context)(predef: Seq[c.Tree],
+                                      unit: Option[c.Tree],
+                                      flatMap: c.Tree => c.Tree,
+                                      raise: Option[c.Tree => c.Tree],
+                                      recover: Option[(c.Tree, c.Tree) => c.Tree],
+                                      ensuring: Option[(c.Tree, c.Tree) => c.Tree],
+                                      ensuringType: Option[c.Type],
+                                      body: c.Expr[A],
+                                      bodyType: c.Type): c.Expr[A] = {
+    val impl = new EffectMacro[c.type](c)
+    impl.effectImpl(predef, unit, flatMap, raise, recover, ensuring, ensuringType, body, bodyType)
   }
 }

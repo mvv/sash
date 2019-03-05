@@ -6,11 +6,10 @@ import scala.reflect.macros.blackbox.Context
 import scala.language.higherKinds
 
 object CatsEffectMacro {
-  def effectImpl[F[_], A](ctx: Context)(body: ctx.Expr[F[A]])(
-      implicit monadTag: ctx.WeakTypeTag[F[_]]): ctx.Expr[F[A]] = {
-    import ctx.universe._
+  def effectImpl[F[_], A](c: Context)(body: c.Expr[F[A]])(implicit monadTag: c.WeakTypeTag[F[_]]): c.Expr[F[A]] = {
+    import c.universe._
     val cons = monadTag.tpe.typeConstructor
-    val monadInst = TermName(ctx.freshName("monad"))
+    val monadInst = TermName(c.freshName("monad"))
     val predef = Seq(q"val $monadInst: _root_.cats.Monad[$cons] = implicitly[_root_.cats.Monad[$cons]]")
     val unit = q"$monadInst.unit"
     val flatMap = { value: Tree =>
@@ -22,8 +21,7 @@ object CatsEffectMacro {
     val recover = { (action: Tree, handler: Tree) =>
       q"implicitly[_root_.cats.ApplicativeError[$cons, _root_.java.lang.Throwable]].recoverWith($action)($handler)"
     }
-    val impl = new { val c: ctx.type = ctx } with EffectMacro
-    impl.effectImpl(
+    EffectMacro.effectImpl(c)(
       predef = predef,
       unit = Some(unit),
       flatMap = flatMap,
