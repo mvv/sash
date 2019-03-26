@@ -67,7 +67,7 @@ inside a `for`.
 Core Sash module
 
 ```scala
-libraryDependencies += "com.github.mvv.sash" %% "sash" % "0.1-M1"
+libraryDependencies += "com.github.mvv.sash" %% "sash" % "0.1-M3"
 ```
 
 provides a "simple" version of the `effect` macro, which relies only on `flatMap` method. It can handle conditionals
@@ -76,13 +76,13 @@ configured to handle your favourite monads via a small compatibility layer. Sash
 the [Cats](https://typelevel.org/cats) library
 
 ```scala
-libraryDependencies += "com.github.mvv.sash" %% "sash-cats" % "0.1-M1"
+libraryDependencies += "com.github.mvv.sash" %% "sash-cats" % "0.1-M3"
 ```
 
 and one for the [ZIO](https://github.com/scalaz/scalaz-zio)
 
 ```scala
-libraryDependencies += "com.github.mvv.sash" %% "sash-zio" % "0.1-M1"
+libraryDependencies += "com.github.mvv.sash" %% "sash-zio" % "0.1-M3"
 ```
 
 ## Translation rules
