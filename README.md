@@ -15,7 +15,7 @@ import scalaz.zio._
 import scalaz.zio.console._
 import java.io.IOException
 
-def askFor(thing: String): IO[IOException, Unit] = effect[IOException] {
+def askFor(thing: String): IO[IOException, Unit] = effectE[IOException] {
   def ask = effect {
     try getStrLn
     catch {

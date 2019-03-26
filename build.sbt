@@ -95,5 +95,8 @@ lazy val cats = (project in file("./cats"))
 
 lazy val zio = (project in file("./zio"))
   .settings(commonSettings)
-  .settings(name := "sash-zio", libraryDependencies ++= Seq("org.scalaz" %% "scalaz-zio" % "0.6.1" % Provided))
+  .settings(
+    name := "sash-zio",
+    crossScalaVersions := Seq(scala2_11, scala2_12),
+    libraryDependencies ++= Seq("org.scalaz" %% "scalaz-zio" % "0.18" % Provided))
   .dependsOn(core)
