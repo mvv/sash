@@ -190,5 +190,14 @@ class EffectSpec extends Specification {
         }
       }.trace shouldEqual Push(Pop(1, Done(1)))
     }
+
+    "handle patterns with unapplySeq" >> {
+      effect {
+        TM(List(1, 2)).flatMap {
+          case Seq(x, y) => TM(x + y)
+          case _ => TM.raise(new RuntimeException)
+        }
+      }.trace shouldEqual Push(Pop(List(1, 2), Done(3)))
+    }
   }
 }

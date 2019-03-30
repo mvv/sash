@@ -52,7 +52,7 @@ class EffectMacro[C <: Context](val c: C) {
   }
 
   private val unapplyName = TermName("unapply")
-  private val unapplySeqName = TermName("unapply")
+  private val unapplySeqName = TermName("unapplySeq")
   private val SELECTOR_DUMMY = TermName("<unapply-selector>")
 
   private def stripUnApplyFromPat(pat: Tree): Tree = pat match {
