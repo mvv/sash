@@ -98,7 +98,7 @@ lazy val zio = (project in file("./zio"))
   .settings(
     name := "sash-zio",
     libraryDependencies ++= {
-      val zioVersion = if (isPriorTo2_13(scalaVersion.value)) "0.18" else "0.17"
+      val zioVersion = if (isPriorTo2_13(scalaVersion.value)) "0.19" else "0.17"
       Seq("org.scalaz" %% "scalaz-zio" % zioVersion % Provided)
     }
   )
