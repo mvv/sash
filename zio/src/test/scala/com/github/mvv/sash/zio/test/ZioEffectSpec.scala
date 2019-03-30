@@ -38,7 +38,7 @@ class ZioEffectSpec extends Specification with DefaultRuntime {
       val result = effect {
         val ref1 = +Ref.make(1)
         val ref2 = +Ref.make(1)
-        val inUse = +managed {
+        val (before1, before2) = +managed {
           Managed.make(ref1.set(2))(_ => ref1.set(3))
           Managed.make(ref2.set(2))(_ => ref2.set(3))
         }.use { _ =>
@@ -46,7 +46,7 @@ class ZioEffectSpec extends Specification with DefaultRuntime {
             IO.succeed((+ref1.get, +ref2.get))
           }
         }
-        IO.succeed((inUse, (+ref1.get, +ref2.get)))
+        IO.succeed(((before1, before2), (+ref1.get, +ref2.get)))
       }
       unsafeRun(result) shouldEqual ((2, 2), (3, 3))
     }

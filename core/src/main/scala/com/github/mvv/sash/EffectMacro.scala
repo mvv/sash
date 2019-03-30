@@ -227,6 +227,12 @@ class EffectMacro[C <: Context](val c: C) {
                                   expr.tpe,
                                   () => pureAnd(treeCopy.ValDef(stmt, mods, name, tp, q"$tempName"), next),
                                   next.contType))
+      case q"$mods val $name: $tp = ${Typed(expr, exprTypeTree: TypeTree)} match { case ..$cases }"
+          if mods.hasFlag(Flag.SYNTHETIC) =>
+        val stripped = q"${Typed(expr, TypeTree(exprTypeTree.tpe))} match { case ..$cases }"
+        handleExpr(stripped, next.contType) { value =>
+          pureAnd(treeCopy.ValDef(stmt, mods, name, tp, value), next)
+        }
       case q"$mods val $name: $tp = $expr" =>
         handleExpr(expr, next.contType) { value =>
           pureAnd(treeCopy.ValDef(stmt, mods, name, tp, value), next)
