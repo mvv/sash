@@ -6,8 +6,6 @@ import scala.reflect.macros.blackbox.Context
 class EffectMacro[C <: Context](val c: C) {
   import c.universe._
 
-  private object MacroError extends RuntimeException
-
   private val effectfulTypeSymbol = typeOf[effectful].typeSymbol
   private val impurityTypeSymbol = typeOf[impurity].typeSymbol
   private val purityTypeSymbol = typeOf[purity].typeSymbol
@@ -62,8 +60,7 @@ class EffectMacro[C <: Context](val c: C) {
     case UnApply(app @ Apply(Select(qual, `unapplyName` | `unapplySeqName`), List(Ident(SELECTOR_DUMMY))), args) =>
       treeCopy.Apply(app, qual, args.map(stripUnApplyFromPat))
     case UnApply(_, _) =>
-      c.error(pat.pos, "Unexpected UnApply form")
-      throw MacroError
+      c.abort(pat.pos, "Unexpected UnApply form")
     case Apply(fn, args) =>
       treeCopy.Apply(pat, fn, args.map(stripUnApplyFromPat))
     case Bind(name, subPat) =>
@@ -147,20 +144,16 @@ class EffectMacro[C <: Context](val c: C) {
     //System.err.println(s"INPUT: ${body.tree}")
 
     def getUnitTree(pos: Position): Tree = unit.getOrElse {
-      c.error(pos, "Macro is not configured to translate empty code blocks")
-      throw MacroError
+      c.abort(pos, "Macro is not configured to translate empty code blocks")
     }
     def getEnsuringType(pos: Position): Type = ensuringType.getOrElse {
-      c.error(pos, "Macro is not configured to translate finally")
-      throw MacroError
+      c.abort(pos, "Macro is not configured to translate finally")
     }
     def getRecoverTree(pos: Position): (Tree, Tree) => Tree = recover.getOrElse {
-      c.error(pos, "Macro is not configured to translate catches")
-      throw MacroError
+      c.abort(pos, "Macro is not configured to translate catches")
     }
     def getEnsuringTree(pos: Position): (Tree, Tree) => Tree = ensuring.getOrElse {
-      c.error(pos, "Macro is not configured to translate finally")
-      throw MacroError
+      c.abort(pos, "Macro is not configured to translate finally")
     }
     def effectAnd(tree: Tree, next: NextStmt): Tree = next match {
       case ConsumesResult(bindName, bindType, cont, _) => q"${flatMap(tree)}(($bindName: $bindType) => ${cont()})"
@@ -169,13 +162,11 @@ class EffectMacro[C <: Context](val c: C) {
     }
     def pureAnd(tree: Tree, next: NextStmt): Tree = next match {
       case _: ConsumesResult =>
-        c.error(tree.pos, "Unexpected binding")
-        throw MacroError
+        c.abort(tree.pos, "Unexpected binding")
       case IgnoresResult(cont, _) =>
         q"{ $tree; ${cont()} }"
       case Last(_) =>
-        c.error(tree.pos, "Non-effect at the end of a code block")
-        throw MacroError
+        c.abort(tree.pos, "Non-effect at the end of a code block")
     }
 
     def handleExpr(expr: Tree, contType: Type, isStmt: Boolean = false)(cont: Tree => Tree): Tree = expr match {
@@ -228,8 +219,7 @@ class EffectMacro[C <: Context](val c: C) {
       })
     def handleStmt(stmt: Tree, next: NextStmt): Tree = stmt match {
       case q"$mods val $_: $_ = $_" if mods.hasFlag(Flag.LAZY) =>
-        c.error(stmt.pos, "Lazy variables are not supported")
-        throw MacroError
+        c.abort(stmt.pos, "Lazy variables are not supported")
       case q"$mods val $name: $tp = ${expr @ Effectful(effect)}" =>
         val tempName = TermName(c.freshName())
         handleStmt(effect,
@@ -242,8 +232,7 @@ class EffectMacro[C <: Context](val c: C) {
           pureAnd(treeCopy.ValDef(stmt, mods, name, tp, value), next)
         }
       case q"$_ var $_: $_ = $_" =>
-        c.error(stmt.pos, "Mutable variables are not supported")
-        throw MacroError
+        c.abort(stmt.pos, "Mutable variables are not supported")
       case DefDef(mods, name, typeParams, params, tp, expr) =>
         pureAnd(treeCopy.DefDef(stmt, mods, name, typeParams, params, tp, stripUnApply(expr)), next)
       case q"if ($cond) { ..${Seq()} } else { ..${Seq()} }" =>
@@ -255,16 +244,14 @@ class EffectMacro[C <: Context](val c: C) {
         handleExpr(cond, next.contType) { condValue =>
           next match {
             case _: ConsumesResult =>
-              c.error(stmt.pos, "Unexpected binding")
-              throw MacroError
+              c.abort(stmt.pos, "Unexpected binding")
             case IgnoresResult(cont, contType) =>
               val restName = TermName(c.freshName("rest"))
               q"""{ def $restName = ${cont()}
                   ; if ($condValue) ${handleStmt(whenTrue, IgnoresResult(() => q"$restName", contType))}
                     else $restName }"""
             case Last(_) =>
-              c.error(stmt.pos, "Partial conditional at the end of a code block")
-              throw MacroError
+              c.abort(stmt.pos, "Partial conditional at the end of a code block")
           }
         }
       case q"if ($cond) $whenTrue else $whenFalse" =>
@@ -312,13 +299,11 @@ class EffectMacro[C <: Context](val c: C) {
         val loopName = TermName(c.freshName("loop"))
         val done = next match {
           case _: ConsumesResult =>
-            c.error(stmt.pos, "Unexpected binding")
-            throw MacroError
+            c.abort(stmt.pos, "Unexpected binding")
           case IgnoresResult(cont, _) =>
             cont()
           case Last(_) =>
-            c.error(stmt.pos, "Loop at the end of a code block")
-            throw MacroError
+            c.abort(stmt.pos, "Loop at the end of a code block")
         }
         val loopBody = handleExpr(cond, next.contType) { condValue =>
           q"if ($condValue) ${handleStmt(whileTrue, IgnoresResult(() => q"$loopName", next.contType))} else $done"
@@ -328,13 +313,11 @@ class EffectMacro[C <: Context](val c: C) {
         val loopName = TermName(c.freshName("loop"))
         val done = next match {
           case _: ConsumesResult =>
-            c.error(stmt.pos, "Unexpected binding")
-            throw MacroError
+            c.abort(stmt.pos, "Unexpected binding")
           case IgnoresResult(cont, _) =>
             cont()
           case Last(_) =>
-            c.error(stmt.pos, "Loop at the end of a code block")
-            throw MacroError
+            c.abort(stmt.pos, "Loop at the end of a code block")
         }
         val loopBody = handleStmt(whileTrue, IgnoresResult({ () =>
           handleExpr(cond, next.contType) { condValue =>
@@ -345,8 +328,7 @@ class EffectMacro[C <: Context](val c: C) {
       case Throw(expr) =>
         handleExpr(expr, next.contType) { value =>
           val raiseTree = raise.getOrElse {
-            c.error(stmt.pos, "Macro is not configured to translate throws")
-            throw MacroError
+            c.abort(stmt.pos, "Macro is not configured to translate throws")
           }
           effectAnd(raiseTree(value), next)
         }
@@ -397,8 +379,7 @@ class EffectMacro[C <: Context](val c: C) {
       case Import(_, _) =>
         pureAnd(stmt, next)
       case Return(_) =>
-        c.error(stmt.pos, "Return statements are not supported")
-        throw MacroError
+        c.abort(stmt.pos, "Return statements are not supported")
       case Impurity(impurity) =>
         pureAnd(stripUnApply(impurity), next)
       case _ =>
@@ -407,11 +388,7 @@ class EffectMacro[C <: Context](val c: C) {
         }
     }
     val bodyTree = body.tree
-    val result = try {
-      handleStmt(bodyTree, Last(bodyType))
-    } catch {
-      case MacroError => return body
-    }
+    val result = handleStmt(bodyTree, Last(bodyType))
     val withPredef = q"{ val $processedMarkerName = (); ..$predef; $result }"
     val untyped = c.untypecheck(withPredef)
     //System.err.println(s"UNTYPED: $untyped")
