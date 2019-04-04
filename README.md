@@ -10,12 +10,39 @@ effectful subexpressions. This approach eliminates the need for the infamous `_ 
 equivalents:
 
 ```scala
+import com.github.mvv.sash.cats._
+import cats.effect._
+import cats.effect.concurrent.Ref
+import cats.effect.Console.io._
+
+def askFor(thing: String): IO[Unit] = effect[IO] {
+  def ask = effect {
+    try readLn
+    catch {
+      case e: IOException =>
+        putStrLn("Yikes!")
+        throw e
+    }
+  }
+  putStrLn(s"Enter $thing")
+  val answer = +Ref.of[IO, String](+ask)
+  while (+answer.get != thing) {
+    putStrLn(s"No, enter $thing")
+    answer.set(+ask)
+  }
+  putStrLn("You pass")
+}
+```
+
+or, with ZIO:
+
+```scala
 import com.github.mvv.sash.zio._
 import scalaz.zio._
 import scalaz.zio.console._
 import java.io.IOException
 
-def askFor(thing: String): IO[IOException, Unit] = effectE[IOException] {
+def askFor(thing: String): ZIO[Console, IOException, Unit] = effect[Console, IOException] {
   def ask = effect {
     try getStrLn
     catch {
