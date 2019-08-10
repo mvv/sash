@@ -38,8 +38,8 @@ or, with ZIO:
 
 ```scala
 import com.github.mvv.sash.zio._
-import scalaz.zio._
-import scalaz.zio.console._
+import zio._
+import zio.console._
 import java.io.IOException
 
 def askFor(thing: String): ZIO[Console, IOException, Unit] = effect[Console, IOException] {
@@ -106,7 +106,7 @@ the [Cats](https://typelevel.org/cats) library
 libraryDependencies += "com.github.mvv.sash" %% "sash-cats" % "0.1-M4"
 ```
 
-and one for the [ZIO](https://github.com/scalaz/scalaz-zio)
+and one for the [ZIO](https://github.com/zio/zio)
 
 ```scala
 libraryDependencies += "com.github.mvv.sash" %% "sash-zio" % "0.1-M4"

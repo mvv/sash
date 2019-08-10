@@ -2,7 +2,7 @@ package com.github.mvv.sash.zio.test
 
 import com.github.mvv.sash.zio._
 import org.specs2.mutable.Specification
-import scalaz.zio.{DefaultRuntime, IO, Managed, Ref}
+import zio.{DefaultRuntime, IO, Managed, Ref}
 
 class ZioEffectSpec extends Specification with DefaultRuntime {
   "ZIO effect macro should" >> {

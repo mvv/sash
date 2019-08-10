@@ -43,8 +43,8 @@ lazy val sonatypeReleaseIfNotSnapshot: Command = Command.command("sonatypeReleas
 }
 
 lazy val scala2_11 = "2.11.12"
-lazy val scala2_12 = "2.12.8"
-lazy val scala2_13 = "2.13.0-M5"
+lazy val scala2_12 = "2.12.9"
+lazy val scala2_13 = "2.13.0"
 
 ThisBuild / scalaVersion := scala2_12
 
@@ -65,7 +65,7 @@ lazy val commonSettings = Seq(
     }
   },
   libraryDependencies ++=
-    Seq("org.scala-lang" % "scala-reflect" % scalaVersion.value, "org.specs2" %% "specs2-core" % "4.4.1" % Test),
+    Seq("org.scala-lang" % "scala-reflect" % scalaVersion.value, "org.specs2" %% "specs2-core" % "4.7.0" % Test),
   libraryDependencies ++= {
     if (isPriorTo2_13(scalaVersion.value)) {
       Seq(compilerPlugin("org.scalamacros" % "paradise" % "2.1.1" cross CrossVersion.full))
@@ -90,7 +90,7 @@ lazy val core = (project in file("./core"))
 
 lazy val cats = (project in file("./cats"))
   .settings(commonSettings)
-  .settings(name := "sash-cats", libraryDependencies ++= Seq("org.typelevel" %% "cats-core" % "1.6.0" % Provided))
+  .settings(name := "sash-cats", libraryDependencies ++= Seq("org.typelevel" %% "cats-core" % "2.0.0-RC1" % Provided))
   .dependsOn(core % "test->test;compile->compile")
 
 lazy val zio = (project in file("./zio"))
@@ -98,8 +98,8 @@ lazy val zio = (project in file("./zio"))
   .settings(
     name := "sash-zio",
     libraryDependencies ++= {
-      val zioVersion = if (isPriorTo2_13(scalaVersion.value)) "0.19" else "0.17"
-      Seq("org.scalaz" %% "scalaz-zio" % zioVersion % Provided)
+      val zioVersion = "1.0.0-RC11-1"
+      Seq("dev.zio" %% "zio" % zioVersion % Provided, "dev.zio" %% "zio-streams" % zioVersion % Provided)
     }
   )
   .dependsOn(core)
