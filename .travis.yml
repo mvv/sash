@@ -1,7 +1,7 @@
 language: scala
 
 scala:
-  - 2.12.8
+  - 2.12.9
 
 jdk:
   - openjdk8
@@ -36,7 +36,7 @@ jobs:
       scala: 2.11.12
       name: "Build and test for Scala 2.11"
     - <<: *test
-      scala: 2.13.0-M5
+      scala: 2.13.0
       name: "Build and test for Scala 2.13"
     - &publish
       stage: publish
@@ -47,7 +47,7 @@ jobs:
       scala: 2.11.12
       name: "Publish for Scala 2.11"
     - <<: *publish
-      scala: 2.13.0-M5
+      scala: 2.13.0
       name: "Publish for Scala 2.13"
 
 env:
