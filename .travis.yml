@@ -1,7 +1,7 @@
 language: scala
 
 scala:
-  - 2.12.9
+  - 2.13.2
 
 jdk:
   - openjdk8
@@ -10,6 +10,7 @@ sudo: false
 
 cache:
   directories:
+    - $HOME/.cache/coursier
     - $HOME/.ivy2/cache
     - $HOME/.sbt
 
@@ -29,26 +30,20 @@ jobs:
       script: sbt ++$TRAVIS_SCALA_VERSION scalafmtCheck test:scalafmtCheck scalafmtSbtCheck
     - &test
       stage: test
-      name: "Build and test for Scala 2.12"
+      name: "Build and test for Scala 2.13"
       before_script: gpg --import project/ci.asc
       script: sbt ++$TRAVIS_SCALA_VERSION test package packageSrc publishLocal
     - <<: *test
+      scala: 2.12.11
+      name: "Build and test for Scala 2.12"
+    - <<: *test
       scala: 2.11.12
       name: "Build and test for Scala 2.11"
-    - <<: *test
-      scala: 2.13.0
-      name: "Build and test for Scala 2.13"
     - &publish
       stage: publish
-      name: "Publish for Scala 2.12"
+      name: "Publish"
       before_script: gpg --import project/ci.asc
-      script: sbt ++$TRAVIS_SCALA_VERSION sonatypeOpenIfNotSnapshot publish sonatypeReleaseIfNotSnapshot
-    - <<: *publish
-      scala: 2.11.12
-      name: "Publish for Scala 2.11"
-    - <<: *publish
-      scala: 2.13.0
-      name: "Publish for Scala 2.13"
+      script: sbt +publish sonatypeBundleReleaseIfNotSnapshot
 
 env:
   global:

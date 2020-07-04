@@ -18,35 +18,22 @@ inThisBuild(
 ThisBuild / publishTo := sonatypePublishTo.value
 ThisBuild / publishMavenStyle := true
 
-lazy val sonatypeOpenIfNotSnapshot: Command = Command.command("sonatypeOpenIfNotSnapshot") { state =>
+lazy val sonatypeBundleReleaseIfNotSnapshot: Command = Command.command("sonatypeBundleReleaseIfNotSnapshot") { state =>
   val extracted = Project.extract(state)
   if (extracted.get(isSnapshot)) {
     val log = extracted.get(sLog)
     log.info("Snapshot version, doing nothing")
     state
   } else {
-    val scalaVer = extracted.get(scalaBinaryVersion)
-    val projectVer = extracted.get(version)
-    Command.process(s"sonatypeOpen Sash_$scalaVer-$projectVer", state)
-  }
-}
-
-lazy val sonatypeReleaseIfNotSnapshot: Command = Command.command("sonatypeReleaseIfNotSnapshot") { state =>
-  val extracted = Project.extract(state)
-  if (extracted.get(isSnapshot)) {
-    val log = extracted.get(sLog)
-    log.info("Snapshot version, doing nothing")
-    state
-  } else {
-    Command.process("sonatypeRelease", state)
+    Command.process("sonatypeBundleRelease", state)
   }
 }
 
 lazy val scala2_11 = "2.11.12"
-lazy val scala2_12 = "2.12.9"
-lazy val scala2_13 = "2.13.0"
+lazy val scala2_12 = "2.12.11"
+lazy val scala2_13 = "2.13.2"
 
-ThisBuild / scalaVersion := scala2_12
+ThisBuild / scalaVersion := scala2_13
 
 def isPriorTo2_13(version: String): Boolean =
   CrossVersion.partialVersion(version) match {
@@ -65,7 +52,7 @@ lazy val commonSettings = Seq(
     }
   },
   libraryDependencies ++=
-    Seq("org.scala-lang" % "scala-reflect" % scalaVersion.value, "org.specs2" %% "specs2-core" % "4.7.0" % Test),
+    Seq("org.scala-lang" % "scala-reflect" % scalaVersion.value, "org.specs2" %% "specs2-core" % "4.10.0" % Test),
   libraryDependencies ++= {
     if (isPriorTo2_13(scalaVersion.value)) {
       Seq(compilerPlugin("org.scalamacros" % "paradise" % "2.1.1" cross CrossVersion.full))
@@ -75,30 +62,31 @@ lazy val commonSettings = Seq(
   }
 )
 
-lazy val root = (project in file("."))
+lazy val sash = (project in file("."))
   .settings(
     crossScalaVersions := Nil,
     skip in publish := true,
     sonatypeProfileName := "com.github.mvv",
-    commands ++= Seq(sonatypeOpenIfNotSnapshot, sonatypeReleaseIfNotSnapshot)
+    sonatypeSessionName := s"Sash_${version.value}",
+    commands += sonatypeBundleReleaseIfNotSnapshot
   )
   .aggregate(core, cats, zio)
 
-lazy val core = (project in file("./core"))
+lazy val core = (project in file("core"))
   .settings(commonSettings)
   .settings(name := "sash")
 
-lazy val cats = (project in file("./cats"))
+lazy val cats = (project in file("cats"))
   .settings(commonSettings)
-  .settings(name := "sash-cats", libraryDependencies ++= Seq("org.typelevel" %% "cats-core" % "2.0.0-RC1" % Provided))
+  .settings(name := "sash-cats", libraryDependencies ++= Seq("org.typelevel" %% "cats-core" % "2.0.0" % Provided))
   .dependsOn(core % "test->test;compile->compile")
 
-lazy val zio = (project in file("./zio"))
+lazy val zio = (project in file("zio"))
   .settings(commonSettings)
   .settings(
     name := "sash-zio",
     libraryDependencies ++= {
-      val zioVersion = "1.0.0-RC11-1"
+      val zioVersion = "1.0.0-RC21-2"
       Seq("dev.zio" %% "zio" % zioVersion % Provided, "dev.zio" %% "zio-streams" % zioVersion % Provided)
     }
   )

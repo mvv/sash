@@ -3,10 +3,10 @@ package com.github.mvv.sash.zio.streams.test
 import com.github.mvv.sash.zio._
 import com.github.mvv.sash.zio.streams._
 import org.specs2.mutable.Specification
-import zio.{DefaultRuntime, Ref, ZIO}
+import zio.{BootstrapRuntime, Ref, ZIO}
 import zio.stream.ZStream
 
-class ZioStreamSpec extends Specification with DefaultRuntime {
+class ZioStreamSpec extends Specification with BootstrapRuntime {
   "ZIO stream macro should" >> {
     "construct streams" >> {
       val values = stream {

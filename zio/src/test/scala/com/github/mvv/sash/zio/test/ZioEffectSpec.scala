@@ -2,9 +2,9 @@ package com.github.mvv.sash.zio.test
 
 import com.github.mvv.sash.zio._
 import org.specs2.mutable.Specification
-import zio.{DefaultRuntime, IO, Managed, Ref}
+import zio.{BootstrapRuntime, IO, Managed, Ref}
 
-class ZioEffectSpec extends Specification with DefaultRuntime {
+class ZioEffectSpec extends Specification with BootstrapRuntime {
   "ZIO effect macro should" >> {
     "handle simple programs" >> {
       val result = effect {
