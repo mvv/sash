@@ -27,9 +27,9 @@ class ZioEffectSpec extends Specification with DefaultRuntime {
         } finally {
           ref.update(_ + 5)
         }
-        ref.get
+        ref.get.map(_.toString)
       }
-      unsafeRun(result) shouldEqual 10
+      unsafeRun(result) shouldEqual "10"
     }
   }
 

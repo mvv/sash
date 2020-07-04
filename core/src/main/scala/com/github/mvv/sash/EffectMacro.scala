@@ -134,12 +134,12 @@ class EffectMacro[C <: Context](val c: C) {
                           body: Expr[A],
                           bodyType: Type): Expr[A] = {
     sealed trait NextStmt {
-      def contType: Type
+      def contType: Option[Type]
     }
-    final case class ConsumesResult(bindName: TermName, bindType: Type, cont: () => Tree, contType: Type)
+    final case class ConsumesResult(bindName: TermName, bindType: Type, cont: () => Tree, contType: Option[Type])
         extends NextStmt
-    final case class IgnoresResult(cont: () => Tree, contType: Type) extends NextStmt
-    final case class Last(contType: Type) extends NextStmt
+    final case class IgnoresResult(cont: () => Tree, contType: Option[Type]) extends NextStmt
+    final case class Last(contType: Option[Type]) extends NextStmt
 
     //System.err.println(s"INPUT: ${body.tree}")
 
@@ -158,7 +158,8 @@ class EffectMacro[C <: Context](val c: C) {
     def effectAnd(tree: Tree, next: NextStmt): Tree = next match {
       case ConsumesResult(bindName, bindType, cont, _) => q"${flatMap(tree)}(($bindName: $bindType) => ${cont()})"
       case IgnoresResult(cont, _)                      => q"${flatMap(tree)}(_ => ${cont()})"
-      case Last(contType)                              => q"$tree: $contType"
+      case Last(Some(contType))                        => q"$tree: $contType"
+      case Last(None)                                  => tree
     }
     def pureAnd(tree: Tree, next: NextStmt): Tree = next match {
       case _: ConsumesResult =>
@@ -169,7 +170,7 @@ class EffectMacro[C <: Context](val c: C) {
         c.abort(tree.pos, "Non-effect at the end of a code block")
     }
 
-    def handleExpr(expr: Tree, contType: Type, isStmt: Boolean = false)(cont: Tree => Tree): Tree = expr match {
+    def handleExpr(expr: Tree, contType: Option[Type], isStmt: Boolean = false)(cont: Tree => Tree): Tree = expr match {
       case Effectful(effect) =>
         val tempName = TermName(c.freshName())
         handleStmt(effect, ConsumesResult(tempName, expr.tpe, () => cont(Ident(tempName)), contType))
@@ -295,42 +296,52 @@ class EffectMacro[C <: Context](val c: C) {
                 cases.map(stripUnApplyFromCase(handleStmt(_, IgnoresResult(() => q"$restName", contType))))
               (List(q"def $restName = ${cont()}"), handledCases)
             case Last(contType) =>
-              val handledCases = cases.map(stripUnApplyFromCase(handleStmt(_, Last(contType))))
+              val handledCases = cases.map(stripUnApplyFromCase(handleStmt(_, next)))
               (Nil, handledCases)
           }
           val handled = q"$value match { case ..$handledCases }"
           q"{ ..${decls :+ handled} }"
         }
       case q"while ($cond) $whileTrue" =>
-        val loopName = TermName(c.freshName("loop"))
-        val done = next match {
-          case _: ConsumesResult =>
-            c.abort(stmt.pos, "Unexpected binding")
-          case IgnoresResult(cont, _) =>
-            cont()
-          case Last(_) =>
-            c.abort(stmt.pos, "Loop at the end of a code block")
+        next.contType match {
+          case Some(contType) =>
+            val loopName = TermName(c.freshName("loop"))
+            val done = next match {
+              case _: ConsumesResult =>
+                c.abort(stmt.pos, "Unexpected binding")
+              case IgnoresResult(cont, _) =>
+                cont()
+              case Last(_) =>
+                c.abort(stmt.pos, "Loop at the end of a code block")
+            }
+            val loopBody = handleExpr(cond, next.contType) { condValue =>
+              q"if ($condValue) ${handleStmt(whileTrue, IgnoresResult(() => q"$loopName", next.contType))} else $done"
+            }
+            q"{ def $loopName: $contType = $loopBody; $loopName }"
+          case None =>
+            c.abort(stmt.pos, "Loop inside try/catch")
         }
-        val loopBody = handleExpr(cond, next.contType) { condValue =>
-          q"if ($condValue) ${handleStmt(whileTrue, IgnoresResult(() => q"$loopName", next.contType))} else $done"
-        }
-        q"{ def $loopName: ${next.contType} = $loopBody; $loopName }"
       case q"do $whileTrue while($cond)" =>
-        val loopName = TermName(c.freshName("loop"))
-        val done = next match {
-          case _: ConsumesResult =>
-            c.abort(stmt.pos, "Unexpected binding")
-          case IgnoresResult(cont, _) =>
-            cont()
-          case Last(_) =>
-            c.abort(stmt.pos, "Loop at the end of a code block")
+        next.contType match {
+          case Some(contType) =>
+            val loopName = TermName(c.freshName("loop"))
+            val done = next match {
+              case _: ConsumesResult =>
+                c.abort(stmt.pos, "Unexpected binding")
+              case IgnoresResult(cont, _) =>
+                cont()
+              case Last(_) =>
+                c.abort(stmt.pos, "Loop at the end of a code block")
+            }
+            val loopBody = handleStmt(whileTrue, IgnoresResult({ () =>
+              handleExpr(cond, next.contType) { condValue =>
+                q"if ($condValue) $loopName else $done"
+              }
+            }, next.contType))
+            q"{ def $loopName: $contType = $loopBody; $loopName }"
+          case None =>
+            c.abort(stmt.pos, "Loop inside try/catch")
         }
-        val loopBody = handleStmt(whileTrue, IgnoresResult({ () =>
-          handleExpr(cond, next.contType) { condValue =>
-            q"if ($condValue) $loopName else $done"
-          }
-        }, next.contType))
-        q"{ def $loopName: ${next.contType} = $loopBody; $loopName }"
       case Throw(expr) =>
         handleExpr(expr, next.contType) { value =>
           val raiseTree = raise.getOrElse {
@@ -340,18 +351,18 @@ class EffectMacro[C <: Context](val c: C) {
         }
       case q"try $tryStmt finally $finallyStmt" =>
         val finallyType = getEnsuringType(stmt.pos)
-        effectAnd(getEnsuringTree(stmt.pos)(handleStmt(tryStmt, Last(next.contType)),
-                                            handleStmt(finallyStmt, Last(finallyType))),
-                  next)
+        effectAnd(
+          getEnsuringTree(stmt.pos)(handleStmt(tryStmt, Last(None)), handleStmt(finallyStmt, Last(Some(finallyType)))),
+          next)
       case q"try $tryStmt catch { case ..$catchCases }" =>
-        val handledTry = handleStmt(tryStmt, Last(next.contType))
-        val handledCases = catchCases.map(stripUnApplyFromCase(handleStmt(_, Last(next.contType))))
+        val handledTry = handleStmt(tryStmt, Last(None))
+        val handledCases = catchCases.map(stripUnApplyFromCase(handleStmt(_, Last(None))))
         effectAnd(getRecoverTree(stmt.pos)(handledTry, q"{ case ..$handledCases }"), next)
       case q"try $tryStmt catch { case ..$catchCases } finally $finallyStmt" =>
-        val handledTry = handleStmt(tryStmt, Last(next.contType))
-        val handledCases = catchCases.map(stripUnApplyFromCase(handleStmt(_, Last(next.contType))))
+        val handledTry = handleStmt(tryStmt, Last(None))
+        val handledCases = catchCases.map(stripUnApplyFromCase(handleStmt(_, Last(None))))
         val finallyType = getEnsuringType(stmt.pos)
-        val handledFinally = handleStmt(finallyStmt, Last(finallyType))
+        val handledFinally = handleStmt(finallyStmt, Last(Some(finallyType)))
         effectAnd(
           getEnsuringTree(stmt.pos)(getRecoverTree(stmt.pos)(handledTry, q"{ case ..$handledCases }"), handledFinally),
           next)
@@ -394,7 +405,7 @@ class EffectMacro[C <: Context](val c: C) {
         }
     }
     val bodyTree = body.tree
-    val result = handleStmt(bodyTree, Last(bodyType))
+    val result = handleStmt(bodyTree, Last(Some(bodyType)))
     val withPredef = q"{ val $processedMarkerName = (); ..$predef; $result }"
     val untyped = c.untypecheck(withPredef)
     //System.err.println(s"UNTYPED: $untyped")
