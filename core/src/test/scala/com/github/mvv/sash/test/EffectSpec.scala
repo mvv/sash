@@ -109,12 +109,12 @@ class EffectSpec extends Specification {
       effect {
         while (counter > +TM(0)) {
           TM.say(s"counter-$counter")
-          impure { counter -= 1 }
+          impure(counter -= 1)
         }
         TM(())
-      }.trace shouldEqual Push(Pop(0, Push(Said("counter-2", Pop((),
-                            Push(Pop(0, Push(Said("counter-1", Pop((),
-                              Push(Pop(0, Done(())))))))))))))
+      }.trace shouldEqual Push(
+        Pop(0,
+            Push(Said("counter-2", Pop((), Push(Pop(0, Push(Said("counter-1", Pop((), Push(Pop(0, Done(())))))))))))))
     }
 
     "handle do-while loops" >> {
@@ -122,12 +122,11 @@ class EffectSpec extends Specification {
       effect {
         do {
           TM.say(s"counter-$counter")
-          impure { counter -= 1 }
+          impure(counter -= 1)
         } while (counter > +TM(0))
         TM(())
-      }.trace shouldEqual Push(Said("counter-2", Pop((), Push(Pop(0,
-                            Push(Said("counter-1", Pop((), Push(Pop(0,
-                              Done(())))))))))))
+      }.trace shouldEqual Push(
+        Said("counter-2", Pop((), Push(Pop(0, Push(Said("counter-1", Pop((), Push(Pop(0, Done(())))))))))))
     }
 
     "handle matches" >> {
@@ -140,8 +139,7 @@ class EffectSpec extends Specification {
             TM.say("two")
         }
         TM.say("end")
-      }.trace shouldEqual Push(Pop(2, Push(Said("2", Pop((), Push(Said("two", Pop((),
-                            Said("end", Done(()))))))))))
+      }.trace shouldEqual Push(Pop(2, Push(Said("2", Pop((), Push(Said("two", Pop((), Said("end", Done(()))))))))))
     }
 
     "respect purity" >> {
@@ -162,11 +160,11 @@ class EffectSpec extends Specification {
           if (x < +TM(2)) {
             TM.say("true")
           }
-          TM(( ))
+          TM(())
         }
         TM.say("end")
-      }.trace shouldEqual Push(Said("start", Pop((),
-                            Push(Push(Pop(2, Push(Said("true", Pop((), Pop((), Said("end", Done(()))))))))))))
+      }.trace shouldEqual Push(
+        Said("start", Pop((), Push(Push(Pop(2, Push(Said("true", Pop((), Pop((), Said("end", Done(()))))))))))))
     }
 
     "handle patterns in variable bindings" >> {
@@ -185,7 +183,7 @@ class EffectSpec extends Specification {
       }
       effect {
         TM(1).flatMap {
-          case Bar(x) => TM(x)
+          case Bar(x)          => TM(x)
           case Foo(y @ Bar(_)) => TM(y)
         }
       }.trace shouldEqual Push(Pop(1, Done(1)))
@@ -195,7 +193,7 @@ class EffectSpec extends Specification {
       effect {
         TM(List(1, 2)).flatMap {
           case Seq(x, y) => TM(x + y)
-          case _ => TM.raise(new RuntimeException)
+          case _         => TM.raise(new RuntimeException)
         }
       }.trace shouldEqual Push(Pop(List(1, 2), Done(3)))
     }

@@ -6,9 +6,10 @@ import zio.{ZIO, ZManaged}
 import scala.reflect.macros.blackbox.Context
 
 object ZioEffectMacro {
-  def effectImpl[R, E, A](c: Context)(body: c.Expr[ZIO[R, E, A]])(implicit envTag: c.WeakTypeTag[R],
-                                                                  errorTag: c.WeakTypeTag[E],
-                                                                  resultTag: c.WeakTypeTag[A]): c.Expr[ZIO[R, E, A]] = {
+  def effectImpl[R, E, A](c: Context)(body: c.Expr[ZIO[R, E, A]])(
+      implicit envTag: c.WeakTypeTag[R],
+      errorTag: c.WeakTypeTag[E],
+      resultTag: c.WeakTypeTag[A]): c.Expr[ZIO[R, E, A]] = {
     import c.universe._
     val unit = q"_root_.zio.ZIO.unit"
     val flatMap = { value: Tree =>

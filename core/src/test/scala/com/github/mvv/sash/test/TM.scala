@@ -26,30 +26,29 @@ object TM {
   final private case class Protect[A](tm: TM[A], handler: Throwable => TM[A]) extends TM[A]
   final private case class FlatMap[A, B](tm: TM[A], f: A => TM[B]) extends TM[B]
 
-  final def traceWith[A, B](tm: TM[A], andThen: A => Trace[B], onError: Throwable => Trace[B]): Trace[B] = tm match {
-    case Point(value) =>
-      andThen(value)
-    case Raise(error) =>
-      Trace.Raised(error, onError(error))
-    case Say(word) =>
-      Trace.Said(word, andThen(()))
-    case Protect(prot, handler) =>
-      Trace.Protected {
-        traceWith(
-          prot, { (value: A) =>
-            Trace.Unprotected(andThen(value))
-          }, { error: Throwable =>
-            Trace.Handled(traceWith(handler(error), andThen, onError))
-          }
-        )
-      }
-    case FlatMap(bound, f) =>
-      Trace.Push {
-        traceWith(bound, { (value: Any) =>
-          Trace.Pop(value, traceWith(f(value), andThen, onError))
-        }, onError)
-      }
-  }
+  final def traceWith[A, B](tm: TM[A], andThen: A => Trace[B], onError: Throwable => Trace[B]): Trace[B] =
+    tm match {
+      case Point(value) =>
+        andThen(value)
+      case Raise(error) =>
+        Trace.Raised(error, onError(error))
+      case Say(word) =>
+        Trace.Said(word, andThen(()))
+      case Protect(prot, handler) =>
+        Trace.Protected {
+          traceWith(
+            prot,
+            (value: A) => Trace.Unprotected(andThen(value)),
+            { error: Throwable =>
+              Trace.Handled(traceWith(handler(error), andThen, onError))
+            }
+          )
+        }
+      case FlatMap(bound, f) =>
+        Trace.Push {
+          traceWith(bound, (value: Any) => Trace.Pop(value, traceWith(f(value), andThen, onError)), onError)
+        }
+    }
 
   def trace[A](tm: TM[A]): Trace[A] = traceWith(tm, Trace.Done[A], Trace.Failed)
 

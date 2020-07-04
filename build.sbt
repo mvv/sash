@@ -12,7 +12,7 @@ inThisBuild(
                 name = "Mikhail Vorozhtsov",
                 email = "mikhail.vorozhtsov@gmail.com",
                 url = url("https://github.com/mvv"))),
-    sonatypeProjectHosting := Some(GitHubHosting("mvv", "sash", "mikhail.vorozhtsov@gmail.com")),
+    sonatypeProjectHosting := Some(GitHubHosting("mvv", "sash", "mikhail.vorozhtsov@gmail.com"))
   ))
 
 ThisBuild / publishTo := sonatypePublishTo.value
@@ -72,7 +72,7 @@ lazy val commonSettings = Seq(
     } else {
       Nil
     }
-  },
+  }
 )
 
 lazy val root = (project in file("."))
