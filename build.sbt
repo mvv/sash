@@ -1,3 +1,5 @@
+import sbt._
+import Keys._
 import xerial.sbt.Sonatype._
 
 inThisBuild(
@@ -29,11 +31,13 @@ lazy val sonatypeBundleReleaseIfNotSnapshot: Command = Command.command("sonatype
   }
 }
 
-lazy val scala2_11 = "2.11.12"
-lazy val scala2_12 = "2.12.14"
-lazy val scala2_13 = "2.13.2"
-
-ThisBuild / scalaVersion := scala2_13
+inThisBuild(
+  Seq(
+    crossScalaVersions := Seq("2.13.2", "2.12.14", "2.11.12"),
+    scalaVersion := crossScalaVersions.value.head,
+    scalacOptions ++= Seq("-feature", "-deprecation", "-unchecked", "-Xfatal-warnings")
+  )
+)
 
 def isPriorTo2_13(version: String): Boolean =
   CrossVersion.partialVersion(version) match {
@@ -42,8 +46,6 @@ def isPriorTo2_13(version: String): Boolean =
   }
 
 lazy val commonSettings = Seq(
-  crossScalaVersions := Seq(scala2_11, scala2_12, scala2_13),
-  scalacOptions ++= Seq("-feature", "-deprecation", "-unchecked", "-Xfatal-warnings"),
   scalacOptions ++= {
     if (isPriorTo2_13(scalaVersion.value)) {
       Nil
@@ -64,7 +66,6 @@ lazy val commonSettings = Seq(
 
 lazy val sash = (project in file("."))
   .settings(
-    crossScalaVersions := Nil,
     skip in publish := true,
     sonatypeProfileName := "com.github.mvv",
     sonatypeSessionName := s"Sash_${version.value}",
