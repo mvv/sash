@@ -7,6 +7,6 @@ import zio.stream.ZStream
 trait ZioStreamEffectful extends Effectful {
   implicit final class ZStreamEffectfulOp[R, E, A](stream: ZStream[R, E, A]) {
     @effectful
-    def unary_+(): A = outsideOfMacro
+    def unary_+ : A = outsideOfMacro
   }
 }

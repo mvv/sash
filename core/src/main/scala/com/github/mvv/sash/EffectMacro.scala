@@ -13,7 +13,7 @@ class EffectMacro[C <: Context](val c: C) {
   private object Effectful {
     def unapply(tree: Tree): Option[Tree] =
       tree match {
-        case Apply(fn @ Select(Apply(_, List(effect)), TermName("unary_$plus")), Nil) =>
+        case fn @ Select(Apply(_, List(effect)), TermName("unary_$plus")) =>
           if (fn.symbol.annotations.exists(_.tree.tpe.typeSymbol == effectfulTypeSymbol)) {
             Some(effect)
           } else {

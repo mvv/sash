@@ -1,7 +1,6 @@
 # Sash
-[![Release Version](https://img.shields.io/nexus/r/https/oss.sonatype.org/com.github.mvv.sash/sash_2.12.svg)](https://oss.sonatype.org/content/repositories/releases/com/github/mvv/sash)
-[![Snapshot Version](https://img.shields.io/nexus/s/https/oss.sonatype.org/com.github.mvv.sash/sash_2.12.svg)](https://oss.sonatype.org/content/repositories/snapshots/com/github/mvv/sash)
-[![Build Status](https://travis-ci.com/mvv/sash.svg?branch=master)](https://travis-ci.com/mvv/sash)
+[![Release Version](https://img.shields.io/nexus/r/https/oss.sonatype.org/com.github.mvv.sash/sash_2.13.svg)](https://oss.sonatype.org/content/repositories/releases/com/github/mvv/sash)
+[![Snapshot Version](https://img.shields.io/nexus/s/https/oss.sonatype.org/com.github.mvv.sash/sash_2.13.svg)](https://oss.sonatype.org/content/repositories/snapshots/com/github/mvv/sash)
 
 Sash translates regular Scala code into monadic expressions via a blackbox (meaning that it is mostly transparent to
 your IDE typechecker) macro. Unlike some alternatives, Sash [clearly](#translation-rules) splits the code it translates
@@ -94,7 +93,7 @@ inside a `for`.
 Core Sash module
 
 ```scala
-libraryDependencies += "com.github.mvv.sash" %% "sash" % "0.1-M5"
+libraryDependencies += "com.github.mvv.sash" %% "sash" % "0.1-M7"
 ```
 
 provides a "simple" version of the `effect` macro, which relies only on `flatMap` method. It can handle conditionals
@@ -103,13 +102,13 @@ configured to handle your favourite monads via a small compatibility layer. Sash
 the [Cats](https://typelevel.org/cats) library
 
 ```scala
-libraryDependencies += "com.github.mvv.sash" %% "sash-cats" % "0.1-M5"
+libraryDependencies += "com.github.mvv.sash" %% "sash-cats" % "0.1-M7"
 ```
 
 and one for the [ZIO](https://github.com/zio/zio)
 
 ```scala
-libraryDependencies += "com.github.mvv.sash" %% "sash-zio" % "0.1-M5"
+libraryDependencies += "com.github.mvv.sash" %% "sash-zio" % "0.1-M7"
 ```
 
 ## Translation rules
